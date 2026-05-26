@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { FastifyError } from 'fastify';
 import fastifyJwt from '@fastify/jwt';
 import fastifyRateLimit from '@fastify/rate-limit';
 import { env } from './config/env';
@@ -16,6 +16,7 @@ export const app = Fastify({
 // Register JWT
 app.register(fastifyJwt, {
   secret: env.JWT_SECRET,
+  sign: { expiresIn: '15m' },
 });
 
 // Register Rate Limiting
@@ -63,7 +64,7 @@ app.get('/api/v1/protected', { preHandler: [authenticate] }, async (request, rep
 });
 
 // Global Error Handler
-app.setErrorHandler((error, request, reply) => {
+app.setErrorHandler((error: FastifyError | AppError | Error, request, reply) => {
   if (error instanceof AppError) {
     return reply.status(error.statusCode).send({
       error: {
@@ -75,8 +76,9 @@ app.setErrorHandler((error, request, reply) => {
   }
 
   if (error.name === 'ZodError') {
+    const zodError = error as Error & { issues?: Array<{ path: string[]; message: string }> };
     const details =
-      (error as any).issues?.map((issue: any) => ({
+      zodError.issues?.map((issue) => ({
         path: issue.path.join('.'),
         message: issue.message,
       })) || [];
@@ -89,17 +91,19 @@ app.setErrorHandler((error, request, reply) => {
     });
   }
 
-  if (error.validation) {
+  const fastifyError = error as FastifyError;
+
+  if (fastifyError.validation) {
     return reply.status(400).send({
       error: {
         code: 'VALIDATION_ERROR',
-        message: error.message,
-        details: error.validation,
+        message: fastifyError.message,
+        details: fastifyError.validation,
       },
     });
   }
 
-  if (error.statusCode === 429) {
+  if (fastifyError.statusCode === 429) {
     return reply.status(429).send({
       error: {
         code: 'RATE_LIMITED',

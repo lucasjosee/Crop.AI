@@ -38,7 +38,9 @@ async function seed() {
       id: def.id,
       nomeComercial: def.nome_comercial,
       ingredienteAtivo: def.ingrediente_ativo,
+      fabricante: def.fabricante || null,
       classe: def.classe,
+      grupoQuimicoFrac: def.grupo_quimico_frac || null,
       bulaResumida: def.bula_resumida,
       isActive: true,
     }));
