@@ -1,8 +1,17 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  KeyboardAvoidingView, 
+  Platform, 
+  ScrollView, 
+  TouchableOpacity 
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { z } from 'zod';
 import Toast from 'react-native-toast-message';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
@@ -26,11 +35,11 @@ export default function RegisterScreen() {
   const handleRegister = async () => {
     setErrors({});
     
-    // Validar localmente com Zod
+    // Validate inputs locally
     const result = registerSchema.safeParse({ nome, email, password });
     if (!result.success) {
       const formattedErrors: any = {};
-      result.error.errors.forEach((err) => {
+      result.error.issues.forEach((err) => {
         formattedErrors[err.path[0]] = err.message;
       });
       setErrors(formattedErrors);
@@ -47,7 +56,6 @@ export default function RegisterScreen() {
         text2: 'Faça login para continuar.',
       });
       
-      // Redireciona para o Login
       router.replace('/(auth)/login');
     } catch (err: any) {
       const apiError = err.response?.data?.error;
@@ -68,13 +76,22 @@ export default function RegisterScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
+      <ScrollView 
+        contentContainerStyle={styles.scrollContainer} 
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Central Logo and Subtitle */}
         <View style={styles.header}>
+          <View style={styles.logoContainer}>
+            <Ionicons name="leaf" size={64} color={theme.colors.primary} />
+          </View>
           <Text style={styles.title}>Crie sua conta</Text>
           <Text style={styles.subtitle}>Junte-se à plataforma inteligente Crop.AI</Text>
         </View>
 
-        <View style={styles.formCard}>
+        {/* Form Container */}
+        <View style={styles.formContainer}>
           <Input
             label="Nome Completo do Produtor"
             placeholder="João da Silva"
@@ -92,6 +109,7 @@ export default function RegisterScreen() {
             error={errors.email}
             keyboardType="email-address"
             autoComplete="email"
+            autoCapitalize="none"
           />
 
           <Input
@@ -103,22 +121,22 @@ export default function RegisterScreen() {
             secureTextEntry
           />
 
+          {/* Primary CTA */}
           <Button
             title="Concluir Cadastro"
             onPress={handleRegister}
             loading={loading}
+            variant="primary"
             style={styles.submitBtn}
           />
         </View>
 
+        {/* Footer Link */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Já possui uma conta ativa?</Text>
-          <Button
-            title="Fazer Login"
-            onPress={() => router.push('/(auth)/login')}
-            variant="secondary"
-            style={styles.loginBtn}
-          />
+          <Text style={styles.footerText}>Já possui uma conta ativa? </Text>
+          <TouchableOpacity onPress={() => router.push('/(auth)/login')} activeOpacity={0.7}>
+            <Text style={styles.footerLink}>Fazer Login</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -139,42 +157,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: theme.spacing.xl,
   },
+  logoContainer: {
+    marginBottom: theme.spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
+    fontSize: theme.typography.fontSize.xxl + 4,
+    fontWeight: '900',
     color: theme.colors.text,
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: theme.typography.fontSize.sm,
+    fontSize: theme.typography.fontSize.md,
     color: theme.colors.textSecondary,
     textAlign: 'center',
     marginTop: theme.spacing.xs,
   },
-  formCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    shadowColor: theme.colors.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 8,
+  formContainer: {
+    width: '100%',
   },
   submitBtn: {
-    marginTop: theme.spacing.sm,
+    width: '100%',
+    marginTop: theme.spacing.md,
   },
   footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
     marginTop: theme.spacing.xl,
+    paddingBottom: theme.spacing.md,
   },
   footerText: {
     color: theme.colors.textSecondary,
     fontSize: theme.typography.fontSize.sm,
-    marginBottom: theme.spacing.sm,
   },
-  loginBtn: {
-    width: '100%',
+  footerLink: {
+    color: theme.colors.primary,
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: 'bold',
+    textDecorationLine: 'underline',
   },
 });

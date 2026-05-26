@@ -1,4 +1,3 @@
-import React from 'react';
 import { 
   TouchableOpacity, 
   Text, 
@@ -6,7 +5,8 @@ import {
   StyleSheet, 
   StyleProp, 
   ViewStyle, 
-  TextStyle 
+  TextStyle,
+  View
 } from 'react-native';
 import { theme } from '../config/theme';
 
@@ -18,6 +18,7 @@ interface ButtonProps {
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
+  icon?: React.ReactNode;
 }
 
 export const Button: React.FC<ButtonProps> = ({
@@ -28,6 +29,7 @@ export const Button: React.FC<ButtonProps> = ({
   disabled = false,
   style,
   textStyle,
+  icon,
 }) => {
   const isButtonDisabled = disabled || loading;
 
@@ -40,7 +42,7 @@ export const Button: React.FC<ButtonProps> = ({
 
   const textStyles = [
     styles.baseText,
-    variant === 'secondary' ? styles.secondaryText : styles.defaultText,
+    styles[`${variant}Text`],
     isButtonDisabled && styles.disabledText,
     textStyle,
   ];
@@ -55,10 +57,13 @@ export const Button: React.FC<ButtonProps> = ({
       {loading ? (
         <ActivityIndicator 
           size="small" 
-          color={variant === 'secondary' ? theme.colors.primary : theme.colors.text} 
+          color={variant === 'primary' ? '#FFFFFF' : theme.colors.primary} 
         />
       ) : (
-        <Text style={textStyles}>{title}</Text>
+        <>
+          {icon && <View style={styles.iconContainer}>{icon}</View>}
+          <Text style={textStyles}>{title}</Text>
+        </>
       )}
     </TouchableOpacity>
   );
@@ -66,49 +71,51 @@ export const Button: React.FC<ButtonProps> = ({
 
 const styles = StyleSheet.create({
   baseButton: {
-    height: 48,
-    borderRadius: theme.borderRadius.md,
+    borderRadius: theme.borderRadius.round, // Mockup has pill/rounded shape buttons
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: theme.spacing.lg,
     flexDirection: 'row',
-    shadowColor: theme.colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
   },
   primary: {
-    backgroundColor: theme.colors.primary,
+    backgroundColor: theme.colors.primary, // #2E7D32 Forest Green
+    height: 60,
   },
   secondary: {
     backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: theme.colors.primary,
-    shadowOpacity: 0,
-    elevation: 0,
+    borderWidth: 2,
+    borderColor: theme.colors.borderOutline, // Grey outline from mockup
+    height: 56,
   },
   danger: {
     backgroundColor: theme.colors.error,
+    height: 56,
   },
   disabled: {
-    backgroundColor: theme.colors.disabled,
-    borderColor: theme.colors.disabled,
-    shadowOpacity: 0,
-    elevation: 0,
+    backgroundColor: '#E0E0E0',
+    borderColor: '#E0E0E0',
   },
   baseText: {
     fontSize: theme.typography.fontSize.md,
     fontWeight: 'bold',
     textAlign: 'center',
   },
-  defaultText: {
-    color: theme.colors.background, // High contrast dark text on light primary/danger backgrounds
+  primaryText: {
+    color: '#FFFFFF', // White text on Forest Green
   },
   secondaryText: {
-    color: theme.colors.primary,
+    color: theme.colors.text, // Black text on white outline
+  },
+  dangerText: {
+    color: '#FFFFFF',
   },
   disabledText: {
-    color: theme.colors.textSecondary,
+    color: '#9E9E9E',
+  },
+  iconContainer: {
+    marginRight: theme.spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
+export default Button;

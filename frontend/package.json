@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "dependencies": {
     "@expo/metro-runtime": "~56.0.12",
+    "@expo/vector-icons": "^15.1.1",
     "@op-engineering/op-sqlite": "^16.1.0",
     "@react-native-community/netinfo": "12.0.1",
     "axios": "^1.16.1",

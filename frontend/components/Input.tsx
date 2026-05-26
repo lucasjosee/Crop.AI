@@ -41,15 +41,19 @@ export const Input: React.FC<InputProps> = ({
 
   return (
     <View style={styles.container}>
-      <Text style={[styles.label, error ? styles.labelError : isFocused && styles.labelFocused]}>
-        {label}
-      </Text>
-      
       <View style={[
         styles.inputWrapper,
         isFocused && styles.inputWrapperFocused,
         error && styles.inputWrapperError,
       ]}>
+        {/* Label embutido que corta a borda superior */}
+        <Text style={[
+          styles.label, 
+          error ? styles.labelError : isFocused && styles.labelFocused
+        ]}>
+          {label}
+        </Text>
+        
         <TextInput
           style={[styles.input, style]}
           placeholderTextColor={theme.colors.textSecondary}
@@ -65,6 +69,7 @@ export const Input: React.FC<InputProps> = ({
             onPress={() => setIsPasswordVisible(!isPasswordVisible)}
             style={styles.toggleButton}
             activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} // Garante área de toque mínima de 48x48 dp
           >
             <Text style={styles.toggleText}>
               {isPasswordVisible ? 'Ocultar' : 'Mostrar'}
@@ -84,33 +89,40 @@ export const Input: React.FC<InputProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: theme.spacing.md,
+    marginBottom: theme.spacing.lg, // Mais espaçamento conforme mockup
     width: '100%',
+    position: 'relative',
+    marginTop: theme.spacing.sm, // Espaço para a label flutuante superior
   },
   label: {
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.xs,
+    position: 'absolute',
+    top: -10,
+    left: 12,
+    backgroundColor: theme.colors.surface, // Fundo branco que corta a borda do input box
+    paddingHorizontal: 6,
+    zIndex: 1,
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.textSecondary, // Medium Grey
     fontWeight: '600',
   },
   labelFocused: {
-    color: theme.colors.primary,
+    color: theme.colors.primary, // #2E7D32 Forest Green
   },
   labelError: {
     color: theme.colors.error,
   },
   inputWrapper: {
-    height: 48,
+    height: 60, // Altura de 60 dp conforme especificado
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.surfaceLight,
-    borderWidth: 1.5,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 2, // Borda espessa de 2px
+    borderColor: theme.colors.borderInactive, // Lead Grey for inactive state
+    borderRadius: theme.borderRadius.lg, // Raio de 12px
     paddingHorizontal: theme.spacing.md,
   },
   inputWrapperFocused: {
-    borderColor: theme.colors.primary,
+    borderColor: theme.colors.borderActive, // #2E7D32 Forest Green
   },
   inputWrapperError: {
     borderColor: theme.colors.error,
@@ -118,12 +130,14 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     height: '100%',
-    color: theme.colors.text,
+    color: theme.colors.text, // #212121 Almost Black Grey
     fontSize: theme.typography.fontSize.md,
   },
   toggleButton: {
     justifyContent: 'center',
     alignItems: 'center',
+    height: 48, // Área de toque de 48dp de altura
+    minWidth: 48, // Área de toque de 48dp de largura
     paddingLeft: theme.spacing.sm,
   },
   toggleText: {
@@ -135,5 +149,7 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.xs,
     color: theme.colors.error,
     marginTop: theme.spacing.xs,
+    paddingLeft: theme.spacing.xs,
   },
 });
+export default Input;

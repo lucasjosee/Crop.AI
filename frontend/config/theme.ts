@@ -1,20 +1,23 @@
 export const theme = {
   colors: {
-    background: '#0E1612',      // Deep forest green, close to black
-    surface: '#16221B',         // Subtle container green
-    surfaceLight: '#223329',    // Input backgrounds and card headers
-    primary: '#2ECC71',         // Active leaf green
-    primaryDark: '#1E824C',     // Selected/pressed green
-    primaryLight: '#82E0AA',    // Hover or highlights
-    text: '#E6F4FE',            // High contrast off-white for title
-    textSecondary: '#8CA5A6',   // Soft grey-green for subtitles/body
-    border: '#273C30',          // Muted border color
-    error: '#E74C3C',           // Critical alert red (e.g. disease severity 5)
-    warning: '#E67E22',         // Medium warning orange (e.g. disease severity 3)
-    success: '#2ECC71',         // Success states
-    info: '#3498DB',            // Informative messages
-    disabled: '#2E3E35',        // Disabled buttons/inputs
-    shadow: '#060B08',          // Drop shadow color
+    background: '#F9FAF9',      // Clean off-white background
+    surface: '#FFFFFF',         // Pure white cards and sheets
+    surfaceLight: '#F5F5F5',    // Very light grey for input backgrounds
+    primary: '#2E7D32',         // Forest green (Mockup accent)
+    primaryDark: '#1B5E20',     // Dark green for active states
+    primaryLight: '#4CAF50',    // Light green
+    text: '#212121',            // Almost black text (#212121)
+    textSecondary: '#616161',   // Mid grey text (#616161)
+    border: '#E0E0E0',          // Soft divider grey
+    borderInactive: '#424242',    // Lead Grey for inactive inputs
+    borderOutline: '#BDBDBD',     // Light Grey Outline for secondary/social buttons
+    borderActive: '#2E7D32',    // Border color when focused/active
+    error: '#D32F2F',           // Error red
+    warning: '#F57C00',         // Burnt Orange for offline pending status
+    success: '#81C784',         // Sync completed light green
+    info: '#1976D2',            // Informative blue
+    disabled: '#E0E0E0',        // Disabled state background
+    shadow: '#000000',          // Shadow color
   },
   spacing: {
     xs: 4,
@@ -47,3 +50,4 @@ export const theme = {
     },
   },
 };
+export default theme;
