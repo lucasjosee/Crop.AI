@@ -1,0 +1,11 @@
+[
+  {
+    "id": "cultura-soja-id",
+    "nome": "Soja",
+    "estagioFenologicoPadrao": {
+      "vegetativos": ["VE", "VC", "V1", "V2", "V3", "V4", "V5", "V6"],
+      "reprodutivos": ["R1", "R2", "R3", "R4", "R5", "R5.1", "R5.5", "R6", "R7", "R8"]
+    },
+    "isActive": true
+  }
+]

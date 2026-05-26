@@ -7,13 +7,18 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "db:migrate": "drizzle-kit push"
+    "db:migrate": "drizzle-kit push",
+    "db:seed": "tsx src/db/seeds/run-seed.ts",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@fastify/jwt": "^10.1.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "argon2": "^0.44.0",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.8.5",
@@ -29,6 +34,7 @@
     "eslint": "^10.4.0",
     "prettier": "^3.8.3",
     "tsx": "^4.22.3",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
   }
 }
