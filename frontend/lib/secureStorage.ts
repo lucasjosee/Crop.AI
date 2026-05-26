@@ -5,6 +5,9 @@ export const secureStorage = {
   async setItem(key: string, value: string): Promise<void> {
     if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
       try {
+        // AVISO DE SEGURANÇA: localStorage na web não é criptograficamente seguro.
+        // É usado apenas como fallback/simulação de desenvolvimento para ambiente web.
+        // Em produção mobile, o SecureStore (Keychain no iOS / Keystore no Android) é utilizado.
         localStorage.setItem(key, value);
       } catch (e) {
         console.warn('[SecureStorage] LocalStorage set failed:', e);

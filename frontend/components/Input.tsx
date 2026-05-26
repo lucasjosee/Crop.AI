@@ -7,6 +7,7 @@ import {
   StyleSheet, 
   TouchableOpacity 
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../config/theme';
 
 interface InputProps extends TextInputProps {
@@ -71,9 +72,11 @@ export const Input: React.FC<InputProps> = ({
             activeOpacity={0.7}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} // Garante área de toque mínima de 48x48 dp
           >
-            <Text style={styles.toggleText}>
-              {isPasswordVisible ? 'Ocultar' : 'Mostrar'}
-            </Text>
+            <Ionicons 
+              name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'} 
+              size={24} 
+              color={theme.colors.textSecondary} 
+            />
           </TouchableOpacity>
         )}
       </View>
@@ -140,11 +143,6 @@ const styles = StyleSheet.create({
     minWidth: 48, // Área de toque de 48dp de largura
     paddingLeft: theme.spacing.sm,
   },
-  toggleText: {
-    color: theme.colors.primary,
-    fontSize: theme.typography.fontSize.xs,
-    fontWeight: 'bold',
-  },
   errorText: {
     fontSize: theme.typography.fontSize.xs,
     color: theme.colors.error,
@@ -152,4 +150,3 @@ const styles = StyleSheet.create({
     paddingLeft: theme.spacing.xs,
   },
 });
-export default Input;

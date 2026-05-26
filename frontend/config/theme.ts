@@ -1,11 +1,12 @@
 export const theme = {
   colors: {
-    background: '#F9FAF9',      // Clean off-white background
+    background: '#FFFFFF',      // Clean pure white background (spec requirement)
     surface: '#FFFFFF',         // Pure white cards and sheets
     surfaceLight: '#F5F5F5',    // Very light grey for input backgrounds
     primary: '#2E7D32',         // Forest green (Mockup accent)
     primaryDark: '#1B5E20',     // Dark green for active states
     primaryLight: '#4CAF50',    // Light green
+    primaryLight10: '#E8F5E9',  // 10% opacity primary (Forest green) background highlight
     text: '#212121',            // Almost black text (#212121)
     textSecondary: '#616161',   // Mid grey text (#616161)
     border: '#E0E0E0',          // Soft divider grey
@@ -40,6 +41,7 @@ export const theme = {
       bold: 'System',
     },
     fontSize: {
+      xxs: 10,
       xs: 12,
       sm: 14,
       md: 16,
@@ -50,4 +52,3 @@ export const theme = {
     },
   },
 };
-export default theme;

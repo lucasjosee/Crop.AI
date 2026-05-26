@@ -10,6 +10,13 @@ export interface User {
   nome?: string;
 }
 
+export interface JwtPayload {
+  sub: string;
+  role: string;
+  exp: number;
+  [key: string]: any;
+}
+
 interface AuthState {
   user: User | null;
   accessToken: string | null;
@@ -23,7 +30,7 @@ interface AuthState {
 }
 
 // Helper simples para decodificar JWT no React Native/Web sem dependências adicionais
-function decodeJwt(token: string): any {
+function decodeJwt(token: string): JwtPayload | null {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return null;
@@ -46,7 +53,11 @@ function decodeJwt(token: string): any {
       .map((c: string) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
       .join('');
       
-    return JSON.parse(decodeURIComponent(escaped));
+    const decoded = JSON.parse(decodeURIComponent(escaped));
+    if (!decoded || !decoded.sub || !decoded.role || typeof decoded.exp !== 'number') {
+      throw new Error('Token com payload inválido ou incompleto.');
+    }
+    return decoded;
   } catch (e) {
     console.error('[JWT Decode Error] Failed to decode token:', e);
     return null;
@@ -80,8 +91,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             },
             accessToken,
             isAuthenticated: true,
+            isLoading: false,
           });
-          set({ isLoading: false });
           return;
         } else if (refreshToken) {
           // Token expirou mas temos refresh token. Tentaremos o refresh imediato.
@@ -90,8 +101,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             const response = await api.post('/api/v1/auth/refresh', {
               refresh_token: refreshToken,
             });
-            const { access_token, refresh_token } = response.data;
-            await get().setTokens(access_token, refresh_token);
+            const { access_token, refresh_token: new_refresh_token } = response.data;
+            await get().setTokens(access_token, new_refresh_token);
             set({ isLoading: false });
             return;
           } catch (err) {
@@ -111,15 +122,42 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ isLoading: true });
       
-      const response = await api.post('/api/v1/auth/login', {
-        email,
-        password,
-        device_info: PlatformInfo(),
-      });
+      let access_token: string;
+      let refresh_token: string;
 
-      const { access_token, refresh_token } = response.data;
+      try {
+        const response = await api.post('/api/v1/auth/login', {
+          email,
+          password,
+          device_info: PlatformInfo(),
+        });
+        access_token = response.data.access_token;
+        refresh_token = response.data.refresh_token;
+      } catch (err: any) {
+        // Fallback for offline development / web simulation
+        const isNetworkError = !err.response || err.code === 'ERR_NETWORK' || err.message?.includes('Network Error');
+        if (isNetworkError && __DEV__) {
+          console.log('[AuthStore] DEV ONLY: Using mock auth fallback.');
+          
+          const mockPayload = {
+            sub: 'mock-user-123',
+            role: 'Produtor',
+            exp: Math.floor((Date.now() + 3600000) / 1000), // 1 hour expiration
+          };
+          
+          const payloadStr = JSON.stringify(mockPayload);
+          const mockPayloadBase64 = typeof btoa !== 'undefined'
+            ? btoa(payloadStr).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+            : require('buffer').Buffer.from(payloadStr).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+          
+          access_token = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${mockPayloadBase64}.mocksignature`;
+          refresh_token = 'mock-refresh-token';
+        } else {
+          throw err;
+        }
+      }
+
       const decoded = decodeJwt(access_token);
-
       if (!decoded) {
         throw new Error('Falha ao decodificar token de acesso recebido do servidor.');
       }
@@ -153,13 +191,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ isLoading: true });
       
-      const response = await api.post('/api/v1/auth/register', {
+      await api.post('/api/v1/auth/register', {
         nome,
         email,
         password,
       });
-
-      const { user } = response.data;
 
       // Opcional: auto-login após registro para melhorar UX
       set({ isLoading: false });

@@ -130,15 +130,15 @@ export default function RegisterScreen() {
             style={styles.submitBtn}
           />
         </View>
-
-        {/* Footer Link */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Já possui uma conta ativa? </Text>
-          <TouchableOpacity onPress={() => router.push('/(auth)/login')} activeOpacity={0.7}>
-            <Text style={styles.footerLink}>Fazer Login</Text>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
+
+      {/* Footer Link - Pinned to the bottom of the screen */}
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>Já possui uma conta ativa? </Text>
+        <TouchableOpacity onPress={() => router.push('/(auth)/login')} activeOpacity={0.7}>
+          <Text style={styles.footerLink}>Fazer Login</Text>
+        </TouchableOpacity>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -185,8 +185,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: theme.spacing.xl,
-    paddingBottom: theme.spacing.md,
+    paddingVertical: theme.spacing.md,
+    backgroundColor: theme.colors.background,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
   },
   footerText: {
     color: theme.colors.textSecondary,

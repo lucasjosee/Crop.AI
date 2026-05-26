@@ -214,10 +214,10 @@ export default function HomeScreen() {
       {/* Pill Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
-          <Ionicons name="search" size={20} color="#616161" style={styles.searchIcon} />
+          <Ionicons name="search" size={20} color={theme.colors.textSecondary} style={styles.searchIcon} />
           <TextInput
             placeholder={activeTab === 'diagnostics' ? "Buscar diagnósticos..." : "Buscar na enciclopédia..."}
-            placeholderTextColor="#616161"
+            placeholderTextColor={theme.colors.textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
             style={styles.searchInput}
@@ -228,7 +228,7 @@ export default function HomeScreen() {
               style={styles.clearSearchBtn}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="close-circle" size={18} color="#616161" />
+              <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -357,7 +357,7 @@ export default function HomeScreen() {
                 filteredDiseases.map((item) => (
                   <Card key={item.id} style={styles.diseaseCard}>
                     <View style={styles.diseaseHeaderRow}>
-                      <View style={{ flex: 1 }}>
+                      <View style={styles.diseaseHeaderMain}>
                         <Text style={styles.diseaseTitle}>{item.nome_comum}</Text>
                         <Text style={styles.diseaseScientific}>{item.nome_cientifico}</Text>
                       </View>
@@ -407,6 +407,7 @@ export default function HomeScreen() {
           <Text style={styles.bottomTabLabel}>Chat</Text>
         </TouchableOpacity>
         
+        {/* L12: Esta aba representa a seção consolidada de Histórico & Catálogo (Tela 1 da spec). */}
         <TouchableOpacity style={styles.bottomTabItemActive} activeOpacity={1}>
           <Ionicons name="book" size={24} color={theme.colors.primary} />
           <Text style={styles.bottomTabLabelActive}>Catálogo</Text>
@@ -428,9 +429,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
     paddingTop: Platform.OS === 'ios' ? 10 : 15,
     paddingBottom: theme.spacing.md,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    borderBottomColor: theme.colors.border,
   },
   headerLeft: {
     flexDirection: 'row',
@@ -455,22 +456,22 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     padding: theme.spacing.md,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    borderBottomColor: theme.colors.border,
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.surface,
     borderRadius: 100,
     height: 48,
     paddingHorizontal: theme.spacing.md,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: theme.colors.border,
     ...Platform.select({
       ios: {
-        shadowColor: '#000000',
+        shadowColor: theme.colors.shadow,
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
         shadowRadius: 3,
@@ -497,7 +498,7 @@ const styles = StyleSheet.create({
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.surface,
   },
   tabButton: {
     flex: 1,
@@ -510,9 +511,9 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.colors.primary,
   },
   tabButtonText: {
-    fontSize: theme.typography.fontSize.sm + 1,
+    fontSize: theme.typography.fontSize.md, // M7: fontSize.sm + 1 -> fontSize.md
     color: theme.colors.textSecondary,
-    fontWeight: '600',
+    fontWeight: 'normal', // M6: '600' -> 'normal'
   },
   tabButtonTextActive: {
     color: theme.colors.primary,
@@ -538,7 +539,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#E8F5E9',
+    backgroundColor: theme.colors.primaryLight10, // M8: #E8F5E9 -> theme.colors.primaryLight10
     borderRadius: theme.borderRadius.lg,
     padding: theme.spacing.md,
     marginBottom: theme.spacing.md,
@@ -584,7 +585,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 8,
-    backgroundColor: '#E8F5E9',
+    backgroundColor: theme.colors.primaryLight10, // M8: #E8F5E9 -> theme.colors.primaryLight10
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: theme.spacing.md,
@@ -643,6 +644,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
+  diseaseHeaderMain: {
+    flex: 1, // M9: Mover inline style {{ flex: 1 }} para StyleSheet
+  },
   diseaseTitle: {
     fontSize: theme.typography.fontSize.md + 2,
     fontWeight: 'bold',
@@ -656,7 +660,7 @@ const styles = StyleSheet.create({
   },
   diseaseDivider: {
     height: 1,
-    backgroundColor: '#E0E0E0',
+    backgroundColor: theme.colors.border, // M8: #E0E0E0 -> theme.colors.border
     marginVertical: theme.spacing.md,
   },
   symptomsHeader: {
@@ -673,9 +677,9 @@ const styles = StyleSheet.create({
   bottomTabBar: {
     flexDirection: 'row',
     height: 64,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.surface, // M8: #FFFFFF -> theme.colors.surface
     borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
+    borderTopColor: theme.colors.border, // M8: #E0E0E0 -> theme.colors.border
     justifyContent: 'space-around',
     alignItems: 'center',
     paddingBottom: Platform.OS === 'ios' ? 12 : 4,

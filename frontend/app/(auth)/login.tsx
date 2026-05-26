@@ -149,7 +149,7 @@ export default function LoginScreen() {
             <View style={styles.dividerLine} />
           </View>
 
-          {/* Social Logins */}
+        {/* Social Logins */}
           <Button
             title="Continuar com Google"
             onPress={() => handleSocialLogin('Google')}
@@ -166,15 +166,15 @@ export default function LoginScreen() {
             icon={<Ionicons name="logo-apple" size={20} color={theme.colors.text} />}
           />
         </View>
-
-        {/* Footer Link */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Não tem uma conta? </Text>
-          <TouchableOpacity onPress={() => router.push('/(auth)/register')} activeOpacity={0.7}>
-            <Text style={styles.footerLink}>Cadastre-se aqui</Text>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
+
+      {/* Footer Link - Pinned to the bottom of the screen */}
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>Não tem uma conta? </Text>
+        <TouchableOpacity onPress={() => router.push('/(auth)/register')} activeOpacity={0.7}>
+          <Text style={styles.footerLink}>Cadastre-se aqui</Text>
+        </TouchableOpacity>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1.5,
-    backgroundColor: theme.colors.borderOutline,
+    backgroundColor: theme.colors.textSecondary, // M10: borderOutline -> textSecondary
   },
   dividerText: {
     color: theme.colors.textSecondary,
@@ -254,8 +254,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: theme.spacing.xl,
-    paddingBottom: theme.spacing.md,
+    paddingVertical: theme.spacing.md,
+    backgroundColor: theme.colors.background,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
   },
   footerText: {
     color: theme.colors.textSecondary,

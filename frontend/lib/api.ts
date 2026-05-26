@@ -1,6 +1,11 @@
 import axios from 'axios';
-import { useAuthStore } from '../store/useAuthStore';
 import { secureStorage } from './secureStorage';
+
+declare module 'axios' {
+  export interface InternalAxiosRequestConfig {
+    _retry?: boolean;
+  }
+}
 
 // URL base da API. Em ambiente móvel (Android/iOS), 'localhost' não funciona,
 // então usamos fallback dinâmico para IP se necessário ou porta 3000 por padrão.
@@ -28,6 +33,8 @@ const processQueue = (error: any, token: string | null = null) => {
       promise.reject(error);
     } else if (token) {
       promise.resolve(token);
+    } else {
+      promise.reject(new Error('Token refresh failed silently'));
     }
   });
   failedRequestsQueue = [];
@@ -36,6 +43,7 @@ const processQueue = (error: any, token: string | null = null) => {
 // Interceptor de Requisição - Adiciona Token JWT
 api.interceptors.request.use(
   async (config) => {
+    const { useAuthStore } = require('../store/useAuthStore');
     const token = useAuthStore.getState().accessToken;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -100,6 +108,7 @@ api.interceptors.response.use(
         const { access_token, refresh_token: new_refresh_token } = response.data;
 
         // Atualiza a store global e o Secure Store com o novo par de tokens de forma atômica
+        const { useAuthStore } = require('../store/useAuthStore');
         await useAuthStore.getState().setTokens(access_token, new_refresh_token);
 
         // Desbloqueia e re-executa todas as requisições concorrentes pendentes na fila
@@ -114,6 +123,7 @@ api.interceptors.response.use(
 
         // Força deslogar limpando o estado do app e chaves locais
         console.warn('[API Interceptor] Falha crítica na rotação do Refresh Token. Forçando Logout.', refreshError?.message);
+        const { useAuthStore } = require('../store/useAuthStore');
         await useAuthStore.getState().logout();
 
         return Promise.reject(refreshError);

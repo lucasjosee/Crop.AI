@@ -10,4 +10,3 @@ export const NETWORK_CONFIG = {
   }
 };
 export type ConnectionMode = 'PROBING' | 'ONLINE' | 'DEGRADED' | 'FIELD';
-export default NETWORK_CONFIG;

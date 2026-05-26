@@ -69,7 +69,7 @@ class WebDatabaseDriver implements IDatabaseDriver {
     doenca_defensivo: [
       { id_doenca: 'doenca_ferrugem_asiatica', id_defensivo: 'defensivo_priori_xtra', dosagem_recomendada: '300 ml/ha', carencia_dias: 30 },
       { id_doenca: 'doenca_ferrugem_asiatica', id_defensivo: 'defensivo_elatus', dosagem_recomendada: '200 g/ha', carencia_dias: 30 },
-      { id_doenca: 'doenca_mancha_alvo', id_defensivo: 'defensivo_priori_xtra', dosagem_recommended: '300 ml/ha', carencia_dias: 30 }
+      { id_doenca: 'doenca_mancha_alvo', id_defensivo: 'defensivo_priori_xtra', dosagem_recomendada: '300 ml/ha', carencia_dias: 30 }
     ],
     fila_diagnosticos: [],
     fila_feedbacks: [],
@@ -228,51 +228,61 @@ class NativeDatabaseDriver implements IDatabaseDriver {
 // Inicialização do Driver de Banco de Dados Unificado
 // -------------------------------------------------------------
 export let dbDriver: IDatabaseDriver = new WebDatabaseDriver();
+let initPromise: Promise<IDatabaseDriver> | null = null;
 
 export async function initDatabase(): Promise<IDatabaseDriver> {
-  if (Platform.OS === 'web') {
-    console.log('[Database] Web environment detected. Using mock memory database.');
-    dbDriver = new WebDatabaseDriver();
-    return dbDriver;
+  if (initPromise) {
+    return initPromise;
   }
 
-  try {
-    // Carrega o op-sqlite de forma segura apenas no ambiente nativo
-    const { open } = require('@op-engineering/op-sqlite');
-
-    // 1. Gerenciar a chave do SQLCipher no SecureStore
-    const keyName = 'crop_ai_db_secret_key';
-    let dbKey = await SecureStore.getItemAsync(keyName);
-
-    if (!dbKey) {
-      // Cria uma chave pseudo-aleatória forte de 32 bytes para o SQLCipher
-      const newKey = Array.from({ length: 32 }, () => 
-        Math.floor(Math.random() * 16).toString(16)
-      ).join('');
-      await SecureStore.setItemAsync(keyName, newKey);
-      dbKey = newKey;
+  initPromise = (async () => {
+    if (Platform.OS === 'web') {
+      console.log('[Database] Web environment detected. Using mock memory database.');
+      dbDriver = new WebDatabaseDriver();
+      return dbDriver;
     }
 
-    // 2. Abrir o banco de dados nativo criptografado
-    console.log('[Database] Opening encrypted SQLite database via op-sqlite...');
-    const db = open({
-      name: 'crop_ai_encrypted.db',
-      encryptionKey: dbKey,
-    });
+    try {
+      // Carrega o op-sqlite de forma segura apenas no ambiente nativo
+      const { open } = require('@op-engineering/op-sqlite');
 
-    const driver = new NativeDatabaseDriver(db);
-    dbDriver = driver;
+      // 1. Gerenciar a chave do SQLCipher no SecureStore
+      const keyName = 'crop_ai_db_secret_key';
+      let dbKey = await SecureStore.getItemAsync(keyName);
 
-    // 3. Executar as Migrações (DDL) e Seed
-    await runMigrationsAndSeed(driver);
+      if (!dbKey) {
+        // Cria uma chave criptograficamente segura forte de 32 bytes usando expo-crypto
+        console.log('[Database] Generating secure key via expo-crypto...');
+        const Crypto = require('expo-crypto');
+        const bytes = await Crypto.getRandomBytesAsync(32) as Uint8Array;
+        const newKey = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        await SecureStore.setItemAsync(keyName, newKey);
+        dbKey = newKey;
+      }
 
-    return dbDriver;
-  } catch (error) {
-    console.error('[Database] Failed to initialize native database:', error);
-    console.log('[Database] Falling back to Web Memory Database due to errors.');
-    dbDriver = new WebDatabaseDriver();
-    return dbDriver;
-  }
+      // 2. Abrir o banco de dados nativo criptografado
+      console.log('[Database] Opening encrypted SQLite database via op-sqlite...');
+      const db = open({
+        name: 'crop_ai_encrypted.db',
+        encryptionKey: dbKey,
+      });
+
+      const driver = new NativeDatabaseDriver(db);
+      dbDriver = driver;
+
+      // 3. Executar as Migrações (DDL) e Seed
+      await runMigrationsAndSeed(driver);
+
+      return dbDriver;
+    } catch (error) {
+      console.error('[Database] Failed to initialize native database:', error);
+      console.log('[Database] Falling back to Web Memory Database due to errors.');
+      dbDriver = new WebDatabaseDriver();
+      return dbDriver;
+    }
+  })();
+
+  return initPromise;
 }
 
 // -------------------------------------------------------------

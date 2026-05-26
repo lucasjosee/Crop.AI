@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { theme } from '../config/theme';
 
@@ -9,7 +10,7 @@ export const ConnectionIndicator: React.FC = () => {
   if (connectionMode === 'ONLINE') {
     return (
       <View style={[styles.container, styles.online]}>
-        <View style={[styles.dot, styles.dotOnline]} />
+        <Ionicons name="cloud" size={16} color={theme.colors.primary} style={styles.icon} />
         <Text style={styles.text}>Modo Online</Text>
       </View>
     );
@@ -18,7 +19,7 @@ export const ConnectionIndicator: React.FC = () => {
   if (connectionMode === 'DEGRADED') {
     return (
       <Pressable onPress={forceCheck} style={[styles.container, styles.degraded]}>
-        <View style={[styles.dot, styles.dotDegraded]} />
+        <Ionicons name="cloud" size={16} color={theme.colors.warning} style={styles.icon} />
         <Text style={styles.text}>Conexão Instável</Text>
       </Pressable>
     );
@@ -27,7 +28,7 @@ export const ConnectionIndicator: React.FC = () => {
   if (connectionMode === 'FIELD') {
     return (
       <Pressable onPress={forceCheck} style={[styles.container, styles.field]}>
-        <View style={[styles.dot, styles.dotField]} />
+        <Ionicons name="cloud-offline" size={16} color={theme.colors.error} style={styles.icon} />
         <Text style={styles.text}>Modo Campo (Offline)</Text>
       </Pressable>
     );
@@ -35,7 +36,7 @@ export const ConnectionIndicator: React.FC = () => {
 
   return (
     <View style={[styles.container, styles.probing]}>
-      <View style={[styles.dot, styles.dotProbing]} />
+      <Ionicons name="cloud-outline" size={16} color={theme.colors.info} style={styles.icon} />
       <Text style={styles.text}>Verificando sinal...</Text>
     </View>
   );
@@ -51,10 +52,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginVertical: theme.spacing.xs,
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  icon: {
     marginRight: theme.spacing.xs,
   },
   text: {
@@ -67,31 +65,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.success,
   },
-  dotOnline: {
-    backgroundColor: theme.colors.success,
-  },
   degraded: {
     backgroundColor: `${theme.colors.warning}20`,
     borderWidth: 1,
     borderColor: theme.colors.warning,
-  },
-  dotDegraded: {
-    backgroundColor: theme.colors.warning,
   },
   field: {
     backgroundColor: `${theme.colors.error}20`,
     borderWidth: 1,
     borderColor: theme.colors.error,
   },
-  dotField: {
-    backgroundColor: theme.colors.error,
-  },
   probing: {
     backgroundColor: `${theme.colors.info}20`,
     borderWidth: 1,
     borderColor: theme.colors.info,
-  },
-  dotProbing: {
-    backgroundColor: theme.colors.info,
   },
 });

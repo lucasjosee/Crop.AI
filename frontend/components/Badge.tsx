@@ -38,35 +38,25 @@ const styles = StyleSheet.create({
   badge: {
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.xs,
-    borderRadius: theme.borderRadius.sm,
+    borderRadius: theme.borderRadius.round, // Pill-shape as per spec
     alignSelf: 'flex-start',
     justifyContent: 'center',
     alignItems: 'center',
   },
   primary: {
     backgroundColor: `${theme.colors.primary}20`,
-    borderWidth: 1,
-    borderColor: theme.colors.primary,
   },
   success: {
     backgroundColor: `${theme.colors.success}20`,
-    borderWidth: 1,
-    borderColor: theme.colors.success,
   },
   warning: {
     backgroundColor: `${theme.colors.warning}20`,
-    borderWidth: 1,
-    borderColor: theme.colors.warning,
   },
   error: {
     backgroundColor: `${theme.colors.error}20`,
-    borderWidth: 1,
-    borderColor: theme.colors.error,
   },
   info: {
     backgroundColor: `${theme.colors.info}20`,
-    borderWidth: 1,
-    borderColor: theme.colors.info,
   },
   text: {
     fontSize: theme.typography.fontSize.xs,

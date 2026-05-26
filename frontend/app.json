@@ -22,9 +22,13 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
     "plugins": [
-      "expo-router",
-      "expo-status-bar"
+      "expo-router"
     ]
   }
 }

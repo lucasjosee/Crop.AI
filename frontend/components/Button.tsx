@@ -1,3 +1,4 @@
+import React from 'react';
 import { 
   TouchableOpacity, 
   Text, 
@@ -105,6 +106,7 @@ const styles = StyleSheet.create({
   },
   secondaryText: {
     color: theme.colors.text, // Black text on white outline
+    fontWeight: '600',
   },
   dangerText: {
     color: '#FFFFFF',
@@ -118,4 +120,3 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 });
-export default Button;
