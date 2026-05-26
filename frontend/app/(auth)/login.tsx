@@ -89,6 +89,7 @@ export default function LoginScreen() {
       style={styles.container}
     >
       <ScrollView 
+        style={styles.scrollView}
         contentContainerStyle={styles.scrollContainer} 
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -183,6 +184,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+  scrollView: {
+    flex: 1,
   },
   scrollContainer: {
     flexGrow: 1,
