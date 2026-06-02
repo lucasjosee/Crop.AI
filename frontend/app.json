@@ -28,7 +28,14 @@
       "backgroundColor": "#FFFFFF"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "Este aplicativo precisa de acesso à câmera para tirar fotos de folhas de soja doentes e analisá-las."
+        }
+      ],
+      "react-native-fast-tflite"
     ]
   }
 }

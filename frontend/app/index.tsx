@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter, useFocusEffect } from 'expo-router';
+import * as Crypto from 'expo-crypto';
 import { useAuthStore } from '../store/useAuthStore';
 import { dbDriver } from '../db/sqlite';
 import { Button } from '../components/Button';
@@ -22,6 +24,7 @@ import { ConnectionIndicator } from '../components/ConnectionIndicator';
 import { theme } from '../config/theme';
 
 export default function HomeScreen() {
+  const router = useRouter();
   const { user, logout } = useAuthStore();
   const [activeTab, setActiveTab] = useState<'diagnostics' | 'encyclopedia'>('diagnostics');
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,10 +34,12 @@ export default function HomeScreen() {
   const [pendingCount, setPendingCount] = useState(0);
   const [dbLoading, setDbLoading] = useState(false);
 
-  // Load database seed data on mount
-  useEffect(() => {
-    loadData();
-  }, []);
+  // Load database seed data on focus/mount
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [])
+  );
 
   const loadData = async () => {
     try {
@@ -76,9 +81,11 @@ export default function HomeScreen() {
 
   const handleAddMockDiagnostic = async () => {
     try {
-      const mockId = `local-${Math.random().toString(36).substring(2, 9)}`;
-      // Alternate disease for mock items
-      const targetDisease = Math.random() > 0.5 ? 'doenca_ferrugem_asiatica' : 'doenca_mancha_alvo';
+      const mockId = Crypto.randomUUID();
+      // Alternates between Ferrugem Asiática and Mancha Alvo — real UUIDs from seeds
+      const targetDisease = Math.random() > 0.5
+        ? '3f34559c-6a12-4eb2-a42e-cf629ec2e9e6'  // Ferrugem Asiática
+        : '5be520ca-a6fc-46cd-ae38-fc62157a44f1'; // Mancha Alvo
       const confidence = parseFloat((0.85 + Math.random() * 0.14).toFixed(2));
       
       // Inserir registro mockado na fila local do SQLite (Store & Forward)
@@ -309,7 +316,10 @@ export default function HomeScreen() {
                     <View style={styles.cardContent}>
                       {/* Thumbnail container */}
                       <View style={styles.thumbnailContainer}>
-                        {item.image_uri && item.image_uri.startsWith('http') ? (
+                        {item.image_uri &&
+                          (item.image_uri.startsWith('http') ||
+                            item.image_uri.startsWith('file://') ||
+                            item.image_uri.startsWith('data:')) ? (
                           <Image source={{ uri: item.image_uri }} style={styles.thumbnailImage} />
                         ) : (
                           <Ionicons name="leaf-outline" size={28} color={theme.colors.primary} />
@@ -383,11 +393,7 @@ export default function HomeScreen() {
       <View style={styles.bottomTabBar}>
         <TouchableOpacity 
           style={styles.bottomTabItem} 
-          onPress={() => Toast.show({ 
-            type: 'info', 
-            text1: 'Simulação Câmera', 
-            text2: 'Esta aba abre o visor da Câmera (Sprint 3).' 
-          })}
+          onPress={() => router.push('/camera')}
           activeOpacity={0.7}
         >
           <Ionicons name="camera-outline" size={24} color={theme.colors.textSecondary} />

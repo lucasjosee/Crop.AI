@@ -1,4 +1,5 @@
 import Fastify, { FastifyError } from 'fastify';
+import fastifyCors from '@fastify/cors';
 import fastifyJwt from '@fastify/jwt';
 import fastifyRateLimit from '@fastify/rate-limit';
 import { env } from './config/env';
@@ -11,6 +12,14 @@ export const app = Fastify({
     level: env.NODE_ENV === 'development' ? 'debug' : 'info',
     transport: env.NODE_ENV === 'development' ? { target: 'pino-pretty' } : undefined,
   },
+});
+
+// Register CORS (allow Expo web dev server)
+app.register(fastifyCors, {
+  origin: ['http://localhost:8081', 'http://localhost:19006', 'http://localhost:3000'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
 });
 
 // Register JWT

@@ -20,6 +20,7 @@ interface ButtonProps {
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
   icon?: React.ReactNode;
+  iconPosition?: 'left' | 'right';
 }
 
 export const Button: React.FC<ButtonProps> = ({
@@ -31,6 +32,7 @@ export const Button: React.FC<ButtonProps> = ({
   style,
   textStyle,
   icon,
+  iconPosition = 'left',
 }) => {
   const isButtonDisabled = disabled || loading;
 
@@ -62,8 +64,9 @@ export const Button: React.FC<ButtonProps> = ({
         />
       ) : (
         <>
-          {icon && <View style={styles.iconContainer}>{icon}</View>}
+          {icon && iconPosition === 'left' && <View style={styles.iconContainerLeft}>{icon}</View>}
           <Text style={textStyles}>{title}</Text>
+          {icon && iconPosition === 'right' && <View style={styles.iconContainerRight}>{icon}</View>}
         </>
       )}
     </TouchableOpacity>
@@ -114,8 +117,13 @@ const styles = StyleSheet.create({
   disabledText: {
     color: '#9E9E9E',
   },
-  iconContainer: {
+  iconContainerLeft: {
     marginRight: theme.spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  iconContainerRight: {
+    marginLeft: theme.spacing.sm,
     justifyContent: 'center',
     alignItems: 'center',
   },

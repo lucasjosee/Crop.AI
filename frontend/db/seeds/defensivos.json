@@ -1,0 +1,222 @@
+[
+  {
+    "id": "a7c1e2d3-f4b5-4a6e-8c9d-0e1f2a3b4c5d",
+    "nome_comercial": "Priori Xtra",
+    "ingrediente_ativo": "Azoxistrobina (200 g/L) + Ciproconazol (80 g/L)",
+    "fabricante": "Syngenta",
+    "classe": "Fungicida Sistêmico (Estrobilurina + Triazol)",
+    "grupo_quimico_frac": "C3 (QoI) + G1 (DMI)",
+    "bula_resumida": {
+      "modo_de_acao": "Ação sistêmica com efeito preventivo e curativo. A azoxistrobina inibe a respiração mitocondrial no complexo III (QoI - Quinone outside Inhibitor) do fungo, bloqueando a produção de energia celular. O ciproconazol inibe a biossíntese de ergosterol (DMI - DeMethylation Inhibitor), componente essencial da membrana celular fúngica, causando o colapso estrutural do patógeno.",
+      "epoca_aplicacao": "Aplicar preventivamente ou nos primeiros sintomas da doença. Para Ferrugem Asiática, iniciar as aplicações no pré-fechamento das entrelinhas ou a partir do estádio R1 (início do florescimento). Reaplicar com intervalo de 14 a 21 dias conforme a pressão da doença e condições climáticas favoráveis (alta umidade e temperatura entre 18°C e 28°C). Máximo de 3 aplicações por ciclo.",
+      "volume_calda": "Aplicação terrestre: 100 a 200 L/ha com bicos que garantam cobertura uniforme. Aplicação aérea: 30 a 40 L/ha. Utilizar adjuvante conforme recomendação do fabricante.",
+      "epis_exigidos": [
+        "Macacão de algodão hidrorrepelente com mangas longas",
+        "Luvas de nitrila",
+        "Botas impermeáveis de cano alto (borracha ou PVC)",
+        "Óculos de proteção ou viseira facial",
+        "Máscara com filtro combinado para vapores orgânicos e partículas (A2P2)",
+        "Avental impermeável (durante o preparo da calda)"
+      ],
+      "restricoes_ambientais": "Não aplicar em áreas próximas a cursos d'água (respeitar faixa de proteção mínima conforme legislação local). Tóxico para organismos aquáticos.",
+      "disclaimer": "ATENÇÃO: Este é um resumo informativo. A prescrição e recomendação de uso de defensivos agrícolas é atribuição exclusiva de Engenheiros Agrônomos e Engenheiros Florestais, conforme a Lei Federal nº 7.802/1989 e o Decreto nº 4.074/2002. Consulte sempre um profissional legalmente habilitado (portador de CREA) e leia a bula completa do produto antes de qualquer aplicação."
+    }
+  },
+  {
+    "id": "b8d2f3e4-a5c6-4b7f-9d0e-1f2a3b4c5d6e",
+    "nome_comercial": "Fox Xpro",
+    "ingrediente_ativo": "Bixafem (125 g/L) + Protioconazol (175 g/L) + Trifloxistrobina (150 g/L)",
+    "fabricante": "Bayer",
+    "classe": "Fungicida Sistêmico e Mesostêmico (Carboxamida + Triazolintiona + Estrobilurina)",
+    "grupo_quimico_frac": "C2 (SDHI) + G1 (DMI) + C3 (QoI)",
+    "bula_resumida": {
+      "modo_de_acao": "Tripla ação complementar. O bixafem (SDHI) inibe o complexo II da cadeia respiratória mitocondrial. O protioconazol (DMI) bloqueia a biossíntese de ergosterol na membrana do fungo. A trifloxistrobina (QoI) inibe o complexo III. A combinação de três modos de ação distintos proporciona amplo espectro de controle e reduz o risco de resistência cruzada.",
+      "epoca_aplicacao": "Aplicação preventiva obrigatória. Recomendado iniciar no estádio V8/R1 da soja, quando a pressão fúngica é detectada na região ou antes do fechamento das entrelinhas. Reaplicar com intervalo mínimo de 14 dias se necessário. Máximo de 2 aplicações por ciclo da cultura.",
+      "volume_calda": "Aplicação terrestre: 100 a 200 L/ha. Aplicação aérea: mínimo de 30 L/ha. Recomenda-se a adição de óleo metilado de soja a 0,25% v/v como adjuvante.",
+      "epis_exigidos": [
+        "Macacão impermeável com mangas longas",
+        "Avental impermeável (preparo da calda)",
+        "Luvas de nitrila ou borracha",
+        "Botas impermeáveis de borracha",
+        "Viseira facial ou óculos de proteção",
+        "Máscara com filtro para vapores orgânicos e partículas"
+      ],
+      "restricoes_ambientais": "Tóxico para organismos aquáticos. Respeitar faixas de proteção de recursos hídricos. Não contaminar rios, lagos ou fontes de água.",
+      "disclaimer": "ATENÇÃO: Este é um resumo informativo. A prescrição e recomendação de uso de defensivos agrícolas é atribuição exclusiva de Engenheiros Agrônomos e Engenheiros Florestais, conforme a Lei Federal nº 7.802/1989 e o Decreto nº 4.074/2002. Consulte sempre um profissional legalmente habilitado (portador de CREA) e leia a bula completa do produto antes de qualquer aplicação."
+    }
+  },
+  {
+    "id": "c9e3a4f5-b6d7-4c8a-9e1f-2a3b4c5d6e7f",
+    "nome_comercial": "Elatus",
+    "ingrediente_ativo": "Azoxistrobina (300 g/kg) + Benzovindiflupir (150 g/kg)",
+    "fabricante": "Syngenta",
+    "classe": "Fungicida Sistêmico (Estrobilurina + Carboxamida)",
+    "grupo_quimico_frac": "C3 (QoI) + C2 (SDHI)",
+    "bula_resumida": {
+      "modo_de_acao": "Dupla ação sistêmica. A azoxistrobina (QoI) inibe o complexo III da respiração mitocondrial do fungo. O benzovindiflupir (SDHI) inibe o complexo II (succinato desidrogenase), bloqueando outra etapa crítica da cadeia respiratória. A ação combinada em dois sítios distintos da cadeia energética maximiza a eficácia e reduz o risco de resistência.",
+      "epoca_aplicacao": "Aplicação preventiva a partir do fechamento das entrelinhas ou estádio R1. A maior dose (200 g/ha) deve ser utilizada em situações de alta pressão da doença, cultivares suscetíveis ou histórico de alta incidência na região. Obrigatório o uso de adjuvante específico conforme recomendação do fabricante.",
+      "volume_calda": "Aplicação terrestre: 100 a 200 L/ha. Aplicação aérea: 20 a 40 L/ha.",
+      "epis_exigidos": [
+        "Macacão de algodão hidrorrepelente com mangas longas",
+        "Luvas de nitrila",
+        "Botas impermeáveis de cano alto",
+        "Óculos de proteção",
+        "Máscara com filtro combinado para vapores e partículas",
+        "Avental impermeável (durante o preparo da calda)"
+      ],
+      "restricoes_ambientais": "Não reentrar na área tratada antes de 24 horas ou antes da secagem completa da calda, exceto com uso dos EPIs recomendados.",
+      "disclaimer": "ATENÇÃO: Este é um resumo informativo. A prescrição e recomendação de uso de defensivos agrícolas é atribuição exclusiva de Engenheiros Agrônomos e Engenheiros Florestais, conforme a Lei Federal nº 7.802/1989 e o Decreto nº 4.074/2002. Consulte sempre um profissional legalmente habilitado (portador de CREA) e leia a bula completa do produto antes de qualquer aplicação."
+    }
+  },
+  {
+    "id": "d0f4b5a6-c7e8-4d9b-1f2a-3b4c5d6e7f8a",
+    "nome_comercial": "Orkestra SC",
+    "ingrediente_ativo": "Fluxapiroxade (167 g/L) + Piraclostrobina (333 g/L)",
+    "fabricante": "BASF",
+    "classe": "Fungicida Sistêmico e Translaminar (Carboxamida + Estrobilurina)",
+    "grupo_quimico_frac": "C2 (SDHI) + C3 (QoI)",
+    "bula_resumida": {
+      "modo_de_acao": "Dupla ação sobre a cadeia respiratória do fungo. A fluxapiroxade (SDHI) inibe a succinato desidrogenase no complexo II da mitocôndria. A piraclostrobina (QoI) inibe o citocromo bc1 no complexo III. Possui ação translaminar (penetra no tecido foliar e alcança a face oposta da folha), importante para atingir o fungo na face abaxial.",
+      "epoca_aplicacao": "Aplicação preventiva a partir do florescimento (estádio R1), reaplicando conforme necessário e respeitando intervalo de segurança. Máximo de 2 aplicações por ciclo da cultura. Especialmente indicado para manejo de Mancha Alvo (Corynespora cassiicola).",
+      "volume_calda": "Aplicação terrestre: 100 a 200 L/ha. Aplicação aérea: 40 a 50 L/ha.",
+      "epis_exigidos": [
+        "Macacão hidrorrepelente com mangas longas",
+        "Luvas de nitrila ou borracha",
+        "Botas impermeáveis",
+        "Óculos de proteção ou viseira facial",
+        "Máscara semifacial com filtro químico (vapores orgânicos) e mecânico (partículas)",
+        "Avental impermeável (preparo da calda)"
+      ],
+      "restricoes_ambientais": "Produto perigoso para o meio ambiente. Tóxico para organismos aquáticos. Respeitar faixas de proteção de corpos d'água e áreas de preservação.",
+      "disclaimer": "ATENÇÃO: Este é um resumo informativo. A prescrição e recomendação de uso de defensivos agrícolas é atribuição exclusiva de Engenheiros Agrônomos e Engenheiros Florestais, conforme a Lei Federal nº 7.802/1989 e o Decreto nº 4.074/2002. Consulte sempre um profissional legalmente habilitado (portador de CREA) e leia a bula completa do produto antes de qualquer aplicação."
+    }
+  },
+  {
+    "id": "e1a5c6b7-d8f9-4e0c-2a3b-4c5d6e7f8a9b",
+    "nome_comercial": "Aproach Prima",
+    "ingrediente_ativo": "Picoxistrobina (200 g/L) + Ciproconazol (80 g/L)",
+    "fabricante": "Corteva Agriscience",
+    "classe": "Fungicida Sistêmico (Estrobilurina + Triazol)",
+    "grupo_quimico_frac": "C3 (QoI) + G1 (DMI)",
+    "bula_resumida": {
+      "modo_de_acao": "Ação sistêmica preventiva e curativa. A picoxistrobina (QoI) inibe o complexo III da cadeia respiratória mitocondrial, paralisando a germinação e o crescimento do micélio. O ciproconazol (DMI) bloqueia a biossíntese de ergosterol na membrana fúngica. Possui rápida absorção foliar e redistribuição acrópeta (da base para o ápice).",
+      "epoca_aplicacao": "Aplicação preventiva a partir do estádio V8/R1 ou ao surgimento dos primeiros sintomas. Indicado para programas de manejo de Ferrugem Asiática, Crestamento Foliar de Cercospora e Mancha Parda (Septoriose). Manter intervalo de 14 a 21 dias entre aplicações. Utilizar adjuvante conforme indicação do fabricante.",
+      "volume_calda": "Aplicação terrestre: 100 a 200 L/ha. Aplicação aérea: conforme recomendação específica da bula.",
+      "epis_exigidos": [
+        "Macacão hidrorrepelente com mangas longas",
+        "Luvas de nitrila",
+        "Botas impermeáveis de cano alto",
+        "Óculos de proteção",
+        "Máscara com filtro para vapores orgânicos e partículas",
+        "Avental impermeável (durante preparo da calda)"
+      ],
+      "restricoes_ambientais": "Não reentrar na área tratada antes da secagem completa da calda (mínimo 24 horas). Produto perigoso para organismos aquáticos.",
+      "disclaimer": "ATENÇÃO: Este é um resumo informativo. A prescrição e recomendação de uso de defensivos agrícolas é atribuição exclusiva de Engenheiros Agrônomos e Engenheiros Florestais, conforme a Lei Federal nº 7.802/1989 e o Decreto nº 4.074/2002. Consulte sempre um profissional legalmente habilitado (portador de CREA) e leia a bula completa do produto antes de qualquer aplicação."
+    }
+  },
+  {
+    "id": "f2b6d7c8-e9f0-4a1b-3c4d-5e6f7a8b9c0d",
+    "nome_comercial": "Sumilex 500 WP",
+    "ingrediente_ativo": "Procimidona (500 g/kg)",
+    "fabricante": "Sumitomo Chemical",
+    "classe": "Fungicida de Contato e Sistêmico Local (Dicarboximida)",
+    "grupo_quimico_frac": "E3 (Dicarboximidas)",
+    "bula_resumida": {
+      "modo_de_acao": "Ação primariamente preventiva. Inibe a germinação dos esporos e o crescimento do micélio fúngico interferindo na regulação osmótica (sinalização MAP quinase).",
+      "epoca_aplicacao": "Aplicação preventiva ou aos primeiros sintomas. Para Mofo Branco, realizar a primeira aplicação no início do florescimento (R1) e a segunda 10 a 12 dias após, direcionando o jato para o terço inferior e colo da planta.",
+      "volume_calda": "Aplicação terrestre: 200 L/ha. Garantir excelente cobertura do baixeiro.",
+      "epis_exigidos": [
+        "Macacão de algodão hidrorrepelente com mangas longas",
+        "Luvas de nitrila",
+        "Botas de borracha",
+        "Óculos de proteção",
+        "Máscara com filtro combinado (A2P2)"
+      ],
+      "restricoes_ambientais": "Produto tóxico para organismos aquáticos.",
+      "disclaimer": "ATENÇÃO: Este é um resumo informativo. A prescrição e recomendação de uso de defensivos agrícolas é atribuição exclusiva de Engenheiros Agrônomos e Engenheiros Florestais, conforme a Lei Federal nº 7.802/1989 e o Decreto nº 4.074/2002. Consulte sempre um profissional legalmente habilitado (portador de CREA) e leia a bula completa do produto antes de qualquer aplicação."
+    }
+  },
+  {
+    "id": "a1b2c3d4-e5f6-4789-abcd-ef0123456789",
+    "nome_comercial": "Maxim Advanced",
+    "ingrediente_ativo": "Metalaxil-M (20 g/L) + Fludioxonil (25 g/L) + Tiabendazol (150 g/L)",
+    "fabricante": "Syngenta",
+    "classe": "Fungicida para Tratamento de Sementes (Acilalaninato + Fenilpirrol + Benzimidazol)",
+    "grupo_quimico_frac": "A1 (PA) + E2 (PP) + B1 (MBC)",
+    "bula_resumida": {
+      "modo_de_acao": "Tratamento de Sementes (TS). O Metalaxil-M é sistêmico, específico contra oomicetos (Phytophthora) inibindo a síntese de RNA. Fludioxonil é de contato, inibindo a germinação (ação sobre Rhizoctonia). Tiabendazol é sistêmico, inibindo a mitose fúngica.",
+      "epoca_aplicacao": "Tratamento de sementes pré-plantio.",
+      "volume_calda": "100 mL de produto comercial para 100 kg de sementes, completando com água para o volume total de calda de 500 mL/100 kg de sementes.",
+      "epis_exigidos": [
+        "Macacão de algodão hidrorrepelente com mangas longas",
+        "Avental impermeável",
+        "Luvas de nitrila",
+        "Botas impermeáveis",
+        "Óculos de proteção",
+        "Máscara com filtro mecânico classe P2"
+      ],
+      "restricoes_ambientais": "Altamente tóxico para organismos aquáticos. Não utilizar sementes tratadas para alimentação humana ou animal.",
+      "disclaimer": "ATENÇÃO: Este é um resumo informativo. A prescrição e recomendação de uso de defensivos agrícolas é atribuição exclusiva de Engenheiros Agrônomos e Engenheiros Florestais, conforme a Lei Federal nº 7.802/1989 e o Decreto nº 4.074/2002. Consulte sempre um profissional legalmente habilitado (portador de CREA) e leia a bula completa do produto antes de qualquer aplicação."
+    }
+  },
+  {
+    "id": "e5d4c3b2-a1f9-8765-4321-0fedcba98765",
+    "nome_comercial": "Unizeb Gold",
+    "ingrediente_ativo": "Mancozebe (750 g/kg)",
+    "fabricante": "UPL",
+    "classe": "Fungicida de Contato Multissítio (Ditiocarbamato)",
+    "grupo_quimico_frac": "M03 (Ditiocarbamatos e Relacionados)",
+    "bula_resumida": {
+      "modo_de_acao": "Ação estritamente preventiva e de contato (multissítio). Interfere em múltiplos processos bioquímicos da célula fúngica simultaneamente (síntese de ATP, metabolismo de aminoácidos e respiração), o que torna a resistência cruzada praticamente impossível. Excelente ferramenta para manejo de resistência.",
+      "epoca_aplicacao": "Aplicações preventivas a partir do estádio V8 a R1. Fundamental associar com fungicidas sítio-específicos (misturas em tanque ou produtos prontos) para controle de Mancha Parda, Crestamento Foliar de Cercospora, Ferrugem e Mancha Alvo. Reaplicar a cada 7 a 14 dias. Máximo de 3 aplicações por ciclo.",
+      "volume_calda": "Aplicação terrestre: 100 a 200 L/ha. Exige excelente cobertura foliar por ser um produto de contato (não translaminar e não sistêmico).",
+      "epis_exigidos": [
+        "Macacão de algodão hidrorrepelente com mangas longas",
+        "Luvas de nitrila",
+        "Botas de borracha ou PVC",
+        "Óculos de proteção",
+        "Máscara com filtro mecânico classe P2"
+      ],
+      "restricoes_ambientais": "Produto tóxico para organismos aquáticos. Evitar aplicação perto de cursos d'água.",
+      "disclaimer": "ATENÇÃO: Este é um resumo informativo. A prescrição e recomendação de uso de defensivos agrícolas é atribuição exclusiva de Engenheiros Agrônomos e Engenheiros Florestais, conforme a Lei Federal nº 7.802/1989 e o Decreto nº 4.074/2002. Consulte sempre um profissional legalmente habilitado (portador de CREA) e leia a bula completa do produto antes de qualquer aplicação."
+    }
+  },
+  {
+    "id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+    "nome_comercial": "Engeo Pleno S",
+    "ingrediente_ativo": "Tiametoxam (141 g/L) + Lambda-cialotrina (106 g/L)",
+    "fabricante": "Syngenta",
+    "classe": "Inseticida Sistêmico e de Contato (Neonicotinoide + Piretroide)",
+    "grupo_quimico_frac": "4A + 3A (IRAC)",
+    "bula_resumida": {
+      "modo_de_acao": "Ação de contato, ingestão e sistêmica. O Tiametoxam atua no sistema nervoso central (receptores nicotínicos), e a Lambda-cialotrina modula os canais de sódio. Utilizado indiretamente no controle de viroses por meio da eliminação do inseto vetor (ex: mosca-branca transmitindo o vírus da Folha Carijó).",
+      "epoca_aplicacao": "Aplicar no início da infestação do vetor (mosca-branca) na lavoura. Essencial monitorar a face abaxial das folhas. Máximo de 2 aplicações por ciclo para manejo de resistência do inseto.",
+      "volume_calda": "150 a 200 L/ha (terrestre) com tecnologia de aplicação focada em atingir o terço inferior e face abaxial das folhas.",
+      "epis_exigidos": [
+        "Macacão de algodão hidrorrepelente",
+        "Luvas de nitrila",
+        "Botas de borracha",
+        "Óculos de proteção",
+        "Máscara respiratória"
+      ],
+      "restricoes_ambientais": "Altamente tóxico para abelhas. Não aplicar no período de floração se houver abelhas forrageando na área. Tóxico para organismos aquáticos.",
+      "disclaimer": "ATENÇÃO: Este é um resumo informativo. A prescrição e recomendação de uso de defensivos agrícolas é atribuição exclusiva de Engenheiros Agrônomos e Engenheiros Florestais, conforme a Lei Federal nº 7.802/1989 e o Decreto nº 4.074/2002. Consulte sempre um profissional legalmente habilitado (portador de CREA) e leia a bula completa do produto antes de qualquer aplicação."
+    }
+  },
+  {
+    "id": "9f8e7d6c-5b4a-3f2e-1d0c-b9a8f7e6d5c4",
+    "nome_comercial": "Práticas Culturais (Bacterioses / Viroses)",
+    "ingrediente_ativo": "Manejo Integrado e Genético",
+    "fabricante": "Recomendação Agronômica (Embrapa)",
+    "classe": "Controle Cultural e Preventivo",
+    "grupo_quimico_frac": "N/A",
+    "bula_resumida": {
+      "modo_de_acao": "Controle focado na prevenção e na quebra do ciclo da doença, visto que o controle químico (como bactericidas) na cultura da soja possui eficácia limitada ou inexistente para estas patologias.",
+      "epoca_aplicacao": "Medidas adotadas no planejamento da safra (pré-plantio) e durante o ciclo de desenvolvimento.",
+      "volume_calda": "N/A",
+      "epis_exigidos": ["N/A"],
+      "restricoes_ambientais": "Prática sustentável e ecologicamente recomendada.",
+      "disclaimer": "ATENÇÃO: Para doenças como Crestamento Bacteriano e viroses (Folha Carijó), o controle químico direto do patógeno não é eficiente. O produtor deve focar em: 1) Uso de sementes certificadas e sadias; 2) Rotação de culturas; 3) Controle rigoroso do inseto vetor (no caso de viroses); 4) Limpeza de maquinário agrícola; 5) Uso de cultivares geneticamente resistentes."
+    }
+  }
+]
