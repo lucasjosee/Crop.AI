@@ -1,6 +1,6 @@
 // backend/src/modules/chat/providers/gemini.provider.ts
 import { GoogleGenerativeAI, Content } from '@google/generative-ai';
-import { LLMProvider, LLMMessage, StreamCallbacks } from './llm.provider';
+import type { LLMProvider, LLMMessage, StreamCallbacks } from './llm.provider';
 import { LLM_MAX_TOKENS, LLM_TEMPERATURE } from '../../../config/llm';
 
 export class GeminiProvider implements LLMProvider {

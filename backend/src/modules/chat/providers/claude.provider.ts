@@ -1,6 +1,6 @@
 // backend/src/modules/chat/providers/claude.provider.ts
 import Anthropic from '@anthropic-ai/sdk';
-import { LLMProvider, LLMMessage, StreamCallbacks } from './llm.provider';
+import type { LLMProvider, LLMMessage, StreamCallbacks } from './llm.provider';
 import { LLM_MAX_TOKENS, LLM_TEMPERATURE } from '../../../config/llm';
 
 export class ClaudeProvider implements LLMProvider {
