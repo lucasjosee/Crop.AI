@@ -49,6 +49,8 @@ export default function ChatScreen() {
   const { connectionMode } = useNetworkStore();
   const isField = connectionMode === 'FIELD';
 
+  const prevConnectionMode = useRef(connectionMode);
+
   // JIT load SLM when entering Field mode
   useEffect(() => {
     if (isField && slmStatus === 'idle') {
@@ -61,6 +63,19 @@ export default function ChatScreen() {
       });
     }
   }, [isField]);
+
+  // Context handoff when network mode transitions
+  useEffect(() => {
+    const prev = prevConnectionMode.current;
+    prevConnectionMode.current = connectionMode;
+
+    if ((prev === 'ONLINE' || prev === 'DEGRADED') && connectionMode === 'FIELD') {
+      // ONLINE → FIELD: condense history to 10 messages for SLM
+      useChatStore.getState().condenseForSlm();
+    }
+    // FIELD → ONLINE: no history change needed — next cloud request
+    // will include the full history with the expandForCloud() note
+  }, [connectionMode]);
 
   // Release SLM when leaving screen
   useEffect(() => {
@@ -125,10 +140,20 @@ export default function ChatScreen() {
       }
     } else {
       const cloudHistory = getCloudHistory();
+
+      // If returning from FIELD mode, prepend note about prior offline responses
+      const offlineNote = useChatStore.getState().expandForCloud();
+      const historyWithNote = history.some(m => m.source === 'LOCAL_SLM') && cloudHistory.length > 0
+        ? [
+            { role: 'user' as const, content: `[Contexto do sistema: ${offlineNote}]` },
+            ...cloudHistory,
+          ]
+        : cloudHistory;
+
       cleanupRef.current = streamCloudChat({
         sessionId,
         message: text,
-        history: cloudHistory,
+        history: historyWithNote,
         context: diagnosticContext
           ? {
               cultura: diagnosticContext.cultura,
