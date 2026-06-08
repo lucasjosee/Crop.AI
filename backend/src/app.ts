@@ -6,6 +6,7 @@ import { env } from './config/env';
 import { AppError } from './shared/errors';
 import authenticatePlugin, { authenticate } from './plugins/authenticate';
 import authRoutes from './modules/auth/auth.routes';
+import chatRoutes from './modules/chat/chat.routes';
 
 export const app = Fastify({
   logger: {
@@ -57,6 +58,17 @@ app.register(authRoutes, {
   config: {
     rateLimit: {
       max: 10,
+      timeWindow: '1 minute',
+    },
+  },
+});
+
+// Register Chat Routes
+app.register(chatRoutes, {
+  prefix: '/api/v1/chat',
+  config: {
+    rateLimit: {
+      max: 20,
       timeWindow: '1 minute',
     },
   },
