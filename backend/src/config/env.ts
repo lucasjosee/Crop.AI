@@ -2,6 +2,7 @@ import { z } from 'zod';
 import dotenv from 'dotenv';
 import path from 'path';
 
+// Load .env file from root (useful for local dev with tsx)
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const envSchema = z.object({
@@ -11,6 +12,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string(),
   LLM_PROVIDER: z.enum(['gemini', 'claude']).default('gemini'),
   LLM_API_KEY: z.string().min(1),
+  // For claude: set LLM_MODEL_ID=claude-3-5-sonnet-20241022 in .env
   LLM_MODEL_ID: z.string().default('gemini-1.5-pro'),
 });
 
