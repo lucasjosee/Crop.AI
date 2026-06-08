@@ -44,6 +44,10 @@ vi.mock('../lib/api', () => ({
   },
 }));
 
+vi.mock('expo-crypto', () => ({
+  randomUUID: () => 'test-uuid-' + Math.random().toString(36).slice(2),
+}));
+
 // -------------------------------------------------------------
 // Suíte de Testes para WebDatabaseDriver
 // -------------------------------------------------------------
@@ -240,5 +244,61 @@ describe('useAuthStore', () => {
     expect(useAuthStore.getState().isAuthenticated).toBe(false);
     expect(useAuthStore.getState().user).toBeNull();
     expect(useAuthStore.getState().accessToken).toBeNull();
+  });
+});
+
+import { useChatStore } from './useChatStore';
+
+describe('useChatStore', () => {
+  beforeEach(() => {
+    useChatStore.getState().clearHistory();
+  });
+
+  it('should add user message and return it', () => {
+    const msg = useChatStore.getState().addUserMessage('Olá');
+    expect(msg.role).toBe('user');
+    expect(msg.content).toBe('Olá');
+    expect(useChatStore.getState().history).toHaveLength(1);
+  });
+
+  it('should append streaming tokens and finalize', () => {
+    useChatStore.getState().addUserMessage('Pergunta');
+    useChatStore.getState().appendToStreaming('Resposta ');
+    useChatStore.getState().appendToStreaming('final.');
+    expect(useChatStore.getState().streamingContent).toBe('Resposta final.');
+
+    useChatStore.getState().finalizeStreaming('CLOUD_LLM');
+    expect(useChatStore.getState().history).toHaveLength(2);
+    expect(useChatStore.getState().history[1].source).toBe('CLOUD_LLM');
+    expect(useChatStore.getState().streamingContent).toBe('');
+  });
+
+  it('getCloudHistory should return max 20 non-system messages', () => {
+    for (let i = 0; i < 25; i++) {
+      useChatStore.getState().addUserMessage(`msg ${i}`);
+    }
+    const cloudHistory = useChatStore.getState().getCloudHistory();
+    expect(cloudHistory.length).toBe(20);
+  });
+
+  it('getSlmHistory should return max 10 non-system messages', () => {
+    for (let i = 0; i < 15; i++) {
+      useChatStore.getState().addUserMessage(`msg ${i}`);
+    }
+    const slmHistory = useChatStore.getState().getSlmHistory();
+    expect(slmHistory.length).toBe(10);
+  });
+
+  it('condenseForSlm should truncate to 10 messages and add system note', () => {
+    for (let i = 0; i < 15; i++) {
+      useChatStore.getState().addUserMessage(`msg ${i}`);
+    }
+    useChatStore.getState().condenseForSlm();
+    const { history } = useChatStore.getState();
+    const nonSystem = history.filter(m => m.role !== 'system');
+    const systemMessages = history.filter(m => m.role === 'system');
+    expect(nonSystem.length).toBe(10);
+    expect(systemMessages.length).toBe(1);
+    expect(systemMessages[0].content).toContain('modo offline');
   });
 });
