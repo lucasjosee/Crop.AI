@@ -400,13 +400,9 @@ export default function HomeScreen() {
           <Text style={styles.bottomTabLabel}>Câmera</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.bottomTabItem}
-          onPress={() => Toast.show({ 
-            type: 'info', 
-            text1: 'Simulação Chat', 
-            text2: 'Esta aba abre o Chat com Agrônomo (Sprint 3).' 
-          })}
+          onPress={() => router.push('/chat')}
           activeOpacity={0.7}
         >
           <Ionicons name="chatbubbles-outline" size={24} color={theme.colors.textSecondary} />
