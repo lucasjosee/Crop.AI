@@ -7,6 +7,7 @@ import { AppError } from './shared/errors';
 import authenticatePlugin, { authenticate } from './plugins/authenticate';
 import authRoutes from './modules/auth/auth.routes';
 import chatRoutes from './modules/chat/chat.routes';
+import uploadRoutes from './modules/upload/upload.routes';
 import { ALLOWED_ORIGINS } from './config/cors';
 
 export const app = Fastify({
@@ -74,6 +75,9 @@ app.register(chatRoutes, {
     },
   },
 });
+
+// Register Upload Routes
+app.register(uploadRoutes, { prefix: '/api/v1/upload' });
 
 // Health Check Route
 app.get('/api/v1/health', async (request, reply) => {
