@@ -3,6 +3,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { ChatService } from './chat.service';
 import { chatStreamInputSchema } from './chat.schema';
 import { AppError } from '../../shared/errors';
+import { resolveAllowedOrigin } from '../../config/cors';
 
 const chatService = new ChatService();
 
@@ -14,11 +15,23 @@ export const chatController = {
     // Hijack the response to write SSE manually
     reply.hijack();
 
+    // Hijacking bypasses the Fastify CORS plugin's onSend hook, so we must
+    // set the CORS headers manually here for the streaming response.
+    const allowedOrigin = resolveAllowedOrigin(request.headers.origin);
+    const corsHeaders: Record<string, string> = allowedOrigin
+      ? {
+          'Access-Control-Allow-Origin': allowedOrigin,
+          'Access-Control-Allow-Credentials': 'true',
+          Vary: 'Origin',
+        }
+      : {};
+
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
       'X-Accel-Buffering': 'no',
+      ...corsHeaders,
     });
 
     let aborted = false;

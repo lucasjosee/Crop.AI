@@ -7,6 +7,7 @@ import { AppError } from './shared/errors';
 import authenticatePlugin, { authenticate } from './plugins/authenticate';
 import authRoutes from './modules/auth/auth.routes';
 import chatRoutes from './modules/chat/chat.routes';
+import { ALLOWED_ORIGINS } from './config/cors';
 
 export const app = Fastify({
   logger: {
@@ -17,7 +18,7 @@ export const app = Fastify({
 
 // Register CORS (allow Expo web dev server)
 app.register(fastifyCors, {
-  origin: ['http://localhost:8081', 'http://localhost:19006', 'http://localhost:3000'],
+  origin: ALLOWED_ORIGINS,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
