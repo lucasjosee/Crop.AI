@@ -520,3 +520,165 @@ gantt
 
 > [!TIP]
 > **Estratégia de risco:** As sprints estão ordenadas para que os componentes de maior risco técnico (CV inference, SLM loading, SSE streaming) sejam enfrentados nas Sprints 3-4, no meio do projeto, quando já temos a fundação pronta mas ainda temos margem para pivotar se necessário.
+
+---
+
+## Sprint 4.1 — Distribuição do Modelo SLM (2 dias)
+
+**Objetivo:** Tornar o modo Campo (chat offline) funcional para usuários reais, sem exigir procedimentos manuais de instalação do modelo `.gguf`.
+
+**Contexto:** A Sprint 4 implementou toda a lógica de inferência SLM (`slmChatService.ts`), mas o arquivo do modelo (1–2GB) não pode ser embutido no APK/IPA. Na Sprint 4, o setup exige copiar o arquivo manualmente via ADB — inviável para produção. Esta sprint resolve o problema de distribuição.
+
+### Problema
+
+O `slmChatService.ts` espera o modelo em `documentDirectory/models/gemma-2b-it-q4_k_m.gguf`. Se o arquivo não existir, o modo Campo retorna erro silencioso. Nenhum usuário final consegue usar o chat offline sem intervenção técnica.
+
+### Decisão de Infraestrutura
+
+Antes de implementar, definir onde hospedar o modelo:
+
+| Opção | Prós | Contras |
+|---|---|---|
+| **AWS S3 do projeto** (recomendado) | Controle total, URL privada, mesma infra | Custo de armazenamento/transferência (~$0.10/GB egress) |
+| URL pública do Hugging Face | Sem custo, sem setup | Dependência externa, sem controle de disponibilidade |
+| Play Asset Delivery / On-Demand Resources | Entrega gerenciada pela loja | Complexidade alta, requer publicação nas lojas |
+
+> **Recomendação MVP:** hospedar no S3 do projeto em bucket separado (`app-diagnostico-models`), com URL pré-assinada ou arquivo público. Play Asset Delivery fica para a Sprint 7 (Distribuição).
+
+### Entregas
+
+#### Backend
+- [ ] Endpoint `GET /api/v1/models/slm-url` — retorna a URL de download do modelo (URL pré-assinada S3 ou URL direta, dependendo da decisão de infra)
+  - Resposta: `{ url: string, filename: string, size_bytes: number, checksum_sha256: string }`
+  - Autenticado (requer JWT) — evita consumo anônimo de banda
+
+#### Frontend
+- [ ] `slmDownloadService.ts` — módulo de download com:
+  - Download via `expo-file-system` com progresso (`downloadResumable`)
+  - Verificação de checksum SHA-256 após download
+  - Suporte a retomada de download interrompido (`FileSystem.downloadResumable`)
+  - Limpeza automática se download corrompido
+- [ ] Tela/modal de download no chat: exibida quando modelo não está disponível
+  - Estado: tamanho do arquivo, progresso (%), velocidade estimada
+  - Botão "Baixar modelo offline (X GB)"
+  - Aviso: "Recomendamos usar Wi-Fi"
+  - Opção de cancelar
+- [ ] Integração com `slmChatService.ts`: ao detectar `MODEL_NOT_FOUND`, direcionar para o fluxo de download ao invés de mostrar banner de erro
+- [ ] Persistência: após download, não baixar novamente (checar existência do arquivo no boot do chat)
+
+### 🧪 Gate de Qualidade — Sprint 4.1
+
+| # | Teste | Critério de Aceite |
+|---|---|---|
+| T4.1.1 | Download completo | Apertar "Baixar modelo" → barra de progresso → arquivo em `documentDirectory/models/` |
+| T4.1.2 | Checksum | Download corrompido simulado → app detecta e oferece novo download |
+| T4.1.3 | Retomada | Interromper download (modo avião) → retomar → continua do ponto anterior |
+| T4.1.4 | Chat offline pós-download | Após download, entrar em modo avião → chat funciona com badge 📱 |
+| T4.1.5 | Sem re-download | Fechar e reabrir o app → modelo não é baixado novamente |
+| T4.1.6 | Wi-Fi warning | Usuário em rede móvel → aviso explícito antes de iniciar download |
+
+---
+
+## Backlog de Melhorias Identificadas
+
+> Itens identificados durante testes do MVP. Organizados por prioridade: **P1 = corrigir antes de lançar**, **P2 = melhorar na Sprint 7**, **P3 = pós-MVP**.
+
+---
+
+### [P1] Gap Sprint 4 — Botão "Conversar com o Agrônomo" na tela de diagnóstico
+
+**Problema:** A tela `chat.tsx` foi implementada na Sprint 4, mas o botão de navegação para ela a partir da tela de resultado do diagnóstico (`camera.tsx` / tela de resultado) não foi conectado. O usuário não consegue abrir o chat com contexto do diagnóstico a partir do fluxo principal.
+
+**O que fazer:**
+- Em `camera.tsx` (ou na tela de resultado do diagnóstico), adicionar botão "Conversar com o Agrônomo" que:
+  1. Chama `useChatStore.getState().setDiagnosticContext({ doenca_identificada, cultura, confianca_visao, image_s3_key })`
+  2. Navega para `/chat` via `router.push('/chat')`
+- O `useChatStore` já tem o método `setDiagnosticContext` pronto — só falta a chamada.
+
+**Arquivos:** `frontend/app/camera.tsx` ou tela de resultado do diagnóstico
+
+---
+
+### [P2] Chat — Renderização Markdown + esconder raciocínio CoT
+
+**Problema:** O System Prompt instrui o modelo a usar Chain of Thought (CoT) antes da resposta, mas esse raciocínio interno está aparecendo na interface para o usuário. Além disso, o texto bruto sem markdown fica ilegível.
+
+**Duas abordagens a avaliar:**
+
+**Opção A — Remover CoT do System Prompt (mais simples):**
+Alterar `config/llm.ts` removendo a instrução de CoT explícito. O modelo ainda raciocina internamente sem exibir o processo.
+
+**Opção B — Filtrar o CoT na resposta (mais robusto):**
+Fazer o modelo envolver o raciocínio em tags `<raciocinio>...</raciocinio>` e filtrar essas tags no streaming antes de enviar ao frontend.
+
+**Renderização Markdown:**
+Instalar `react-native-markdown-display` no frontend e substituir os `<Text>` das bolhas de mensagem do assistente por um componente `Markdown`.
+
+```bash
+npx expo install react-native-markdown-display
+```
+
+**Arquivos:** `backend/src/config/llm.ts`, `frontend/app/chat.tsx`
+
+---
+
+### [P2] Chat — Histórico de conversas com multi-seleção para deletar
+
+**Problema:** O `useChatStore` mantém apenas a sessão atual em memória. Ao fechar o app, o histórico é perdido. Não há tela de histórico de conversas anteriores.
+
+**O que fazer:**
+1. Persistir sessões de chat no SQLite local (nova tabela `historico_chats`: `id, titulo, created_at, messages_json`)
+2. Criar tela `app/chat-history.tsx` listando sessões anteriores
+3. Suporte a seleção múltipla para deletar (long press → checkboxes → botão "Apagar X conversas")
+4. Ao tocar em uma conversa, restaurar o histórico no `useChatStore` e navegar para `/chat`
+5. Gerar título automático da sessão a partir da primeira mensagem do usuário (truncado em 60 chars)
+
+**Arquivos:** `frontend/db/sqlite.ts` (nova tabela), `frontend/store/useChatStore.ts` (persistência), `frontend/app/chat-history.tsx` (nova tela), `frontend/app/_layout.tsx` (registrar rota)
+
+---
+
+### [P2] Chat — Polish visual da tela
+
+**Problema:** Interface funcional mas crua. Ausência de animações, estados visuais e identidade visual do app.
+
+**O que melhorar:**
+- Animação de entrada nas bolhas (slide + fade)
+- Avatar do "Agrônomo" nas bolhas de resposta (ícone de folha ou foto genérica)
+- Indicador de digitação animado (3 pontos pulsando) enquanto aguarda o primeiro token
+- Empty state quando não há mensagens: ilustração + "Pergunte sobre sua lavoura"
+- Data/hora nas mensagens (exibida ao longo press na bolha)
+- Botão de copiar texto da resposta
+
+**Arquivos:** `frontend/app/chat.tsx`
+
+---
+
+### [P3] Enciclopédia de Doenças — Fotos por doença
+
+**Problema:** A listagem de doenças não tem imagem, tornando difícil o reconhecimento visual antes de tirar uma foto.
+
+**O que fazer:**
+1. Adicionar campo `foto_url` na tabela `doencas` (SQLite local e PostgreSQL)
+2. Hospedar fotos representativas de cada doença no S3 (ou URL pública)
+3. Atualizar `doencas.json` (seed) com os URLs das fotos
+4. Exibir a foto no card de cada doença na enciclopédia com `Image` + placeholder de loading
+
+**Dependência:** Requer curadoria das fotos (banco de imagens ou parceria com instituições como Embrapa).
+
+**Arquivos:** `frontend/db/seeds/doencas.json`, `frontend/app/index.tsx`, `backend/src/db/seeds/`
+
+---
+
+### [P3] Chat — Calibragem do System Prompt (tom e tamanho da resposta)
+
+**Problema:** As respostas do Agrônomo Virtual estão longas demais e com linguagem técnica excessiva para o público-alvo (produtor rural).
+
+**O que fazer:**
+Ajustar o System Prompt em `backend/src/config/llm.ts`:
+- Adicionar instrução de limite de comprimento: "Responda em no máximo 3 parágrafos curtos"
+- Ajustar tom: "Use linguagem simples, como um agrônomo conversando com um agricultor no campo"
+- Adicionar exemplos few-shot de boas respostas (curtas e objetivas) diretamente no System Prompt
+
+**Nota:** Requer iteração com testes reais de campo para calibrar corretamente. Não fazer alterações precipitadas sem feedback de usuários reais.
+
+**Arquivos:** `backend/src/config/llm.ts`
