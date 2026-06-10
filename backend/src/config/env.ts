@@ -13,7 +13,7 @@ const envSchema = z.object({
   LLM_PROVIDER: z.enum(['gemini', 'claude']).default('gemini'),
   LLM_API_KEY: z.string().min(1),
   // For claude: set LLM_MODEL_ID=claude-3-5-sonnet-20241022 in .env
-  LLM_MODEL_ID: z.string().default('gemini-1.5-pro'),
+  LLM_MODEL_ID: z.string().default('gemini-2.0-flash'),
 });
 
 export const env = envSchema.parse(process.env);
