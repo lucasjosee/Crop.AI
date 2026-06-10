@@ -17,6 +17,8 @@
   "type": "commonjs",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.102.0",
+    "@aws-sdk/client-s3": "^3.1066.0",
+    "@aws-sdk/s3-request-presigner": "^3.1066.0",
     "@fastify/cors": "^11.2.0",
     "@fastify/jwt": "^10.1.0",
     "@fastify/rate-limit": "^10.3.0",
