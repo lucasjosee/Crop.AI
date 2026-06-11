@@ -8,6 +8,7 @@ import authenticatePlugin, { authenticate } from './plugins/authenticate';
 import authRoutes from './modules/auth/auth.routes';
 import chatRoutes from './modules/chat/chat.routes';
 import uploadRoutes from './modules/upload/upload.routes';
+import syncRoutes from './modules/sync/sync.routes';
 import { ALLOWED_ORIGINS } from './config/cors';
 
 export const app = Fastify({
@@ -78,6 +79,17 @@ app.register(chatRoutes, {
 
 // Register Upload Routes
 app.register(uploadRoutes, { prefix: '/api/v1/upload' });
+
+// Register Sync Routes
+app.register(syncRoutes, {
+  prefix: '/api/v1/sync',
+  config: {
+    rateLimit: {
+      max: 30,
+      timeWindow: '1 minute',
+    },
+  },
+});
 
 // Health Check Route
 app.get('/api/v1/health', async (request, reply) => {
