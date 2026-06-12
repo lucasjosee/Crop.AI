@@ -1,6 +1,9 @@
 // frontend/store/useChatStore.ts
 import { create } from 'zustand';
 import * as Crypto from 'expo-crypto';
+import { dbDriver } from '../db/sqlite';
+
+const SLM_MODEL_VERSION = 'gemma-2b-it-q4_k_m';
 
 export type MessageSource = 'CLOUD_LLM' | 'LOCAL_SLM';
 
@@ -36,6 +39,7 @@ interface ChatState {
   getSlmHistory: () => Array<{ role: 'user' | 'assistant'; content: string }>;
   condenseForSlm: () => void;
   expandForCloud: () => string;
+  logSlmInteraction: (prompt: string, response: string, latencyMs: number) => Promise<void>;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -131,4 +135,37 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   expandForCloud: () =>
     'Algumas das respostas anteriores foram geradas por um modelo local compacto durante operação offline. Você pode corrigir ou complementar informações se necessário.',
+
+  logSlmInteraction: async (prompt, response, latencyMs) => {
+    try {
+      const sessionId = get().sessionId;
+      const interaction = {
+        prompt,
+        response,
+        latency_ms: Math.round(latencyMs),
+        rag_used_documents: [] as unknown[],
+      };
+
+      const res = await dbDriver.execute(
+        'SELECT * FROM fila_slm_logs WHERE session_id = ?;',
+        [sessionId]
+      );
+
+      if (res.rows.length > 0) {
+        const interactions = JSON.parse(res.rows.item(0).interactions_json || '[]');
+        interactions.push(interaction);
+        await dbDriver.execute(
+          'UPDATE fila_slm_logs SET interactions_json = ?, sync_status = ? WHERE session_id = ?;',
+          [JSON.stringify(interactions), 'PENDING', sessionId]
+        );
+      } else {
+        await dbDriver.execute(
+          'INSERT INTO fila_slm_logs (session_id, started_at, model_version, interactions_json, sync_status, retry_count) VALUES (?, ?, ?, ?, ?, ?);',
+          [sessionId, new Date().toISOString(), SLM_MODEL_VERSION, JSON.stringify([interaction]), 'PENDING', 0]
+        );
+      }
+    } catch (err) {
+      console.warn('[ChatStore] Falha ao registrar log SLM local:', err);
+    }
+  },
 }));

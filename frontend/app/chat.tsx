@@ -127,16 +127,25 @@ export default function ChatScreen() {
       const sqliteCtx = await getSqliteContext();
       const slmHistory = getSlmHistory();
 
+      const slmStart = Date.now();
+      let slmResponse = '';
       try {
         await slmChat({
           messages: [...slmHistory, { role: 'user', content: text }],
           sqliteContext: sqliteCtx,
-          onToken: (token) => appendToStreaming(token),
+          onToken: (token) => {
+            slmResponse += token;
+            appendToStreaming(token);
+          },
           signal: abortControllerRef.current.signal,
         });
         finalizeStreaming('LOCAL_SLM');
       } catch {
         finalizeStreaming('LOCAL_SLM');
+      } finally {
+        if (slmResponse.trim()) {
+          useChatStore.getState().logSlmInteraction(text, slmResponse, Date.now() - slmStart);
+        }
       }
     } else {
       const cloudHistory = getCloudHistory();
