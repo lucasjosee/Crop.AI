@@ -9,6 +9,7 @@ import authRoutes from './modules/auth/auth.routes';
 import chatRoutes from './modules/chat/chat.routes';
 import uploadRoutes from './modules/upload/upload.routes';
 import syncRoutes from './modules/sync/sync.routes';
+import catalogRoutes from './modules/catalog/catalog.routes';
 import { ALLOWED_ORIGINS } from './config/cors';
 
 export const app = Fastify({
@@ -86,6 +87,17 @@ app.register(syncRoutes, {
   config: {
     rateLimit: {
       max: 30,
+      timeWindow: '1 minute',
+    },
+  },
+});
+
+// Register Catalog Routes
+app.register(catalogRoutes, {
+  prefix: '/api/v1/catalog',
+  config: {
+    rateLimit: {
+      max: 60,
       timeWindow: '1 minute',
     },
   },
