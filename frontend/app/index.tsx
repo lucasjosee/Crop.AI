@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import { useAuthStore } from '../store/useAuthStore';
+import { useSyncStore } from '../store/useSyncStore';
 import { dbDriver } from '../db/sqlite';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -26,6 +27,8 @@ import { theme } from '../config/theme';
 export default function HomeScreen() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
+  const { pendingDiagnostics, pendingFeedbacks, pendingSlmLogs, isSyncing, syncNow, refreshCounts } = useSyncStore();
+  const totalPending = pendingDiagnostics + pendingFeedbacks + pendingSlmLogs;
   const [activeTab, setActiveTab] = useState<'diagnostics' | 'encyclopedia'>('diagnostics');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -38,6 +41,7 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData();
+      refreshCounts();
     }, [])
   );
 
@@ -124,6 +128,17 @@ export default function HomeScreen() {
         text1: 'Erro de Banco',
         text2: 'Falha ao salvar diagnóstico localmente.',
       });
+    }
+  };
+
+  const handleSyncNow = async () => {
+    await syncNow({ manual: true });
+    const { lastError } = useSyncStore.getState();
+    await loadData();
+    if (lastError) {
+      Toast.show({ type: 'error', text1: 'Falha na sincronização', text2: lastError });
+    } else {
+      Toast.show({ type: 'success', text1: 'Sincronização concluída', text2: 'Dados enviados ao servidor.' });
     }
   };
 
@@ -286,13 +301,22 @@ export default function HomeScreen() {
             <View>
               {/* Quick Actions Panel */}
               <View style={styles.welcomeBanner}>
-                <View>
+                <View style={styles.welcomeTextBlock}>
                   <Text style={styles.welcomeTitle}>Olá, {user?.nome?.split(' ')[0] || 'Produtor'}</Text>
                   <Text style={styles.welcomeSubtitle}>
-                    {pendingCount > 0 
-                      ? `${pendingCount} diagnóstico(s) pendente(s) de envio` 
-                      : 'Todos os diagnósticos sincronizados'}
+                    {totalPending > 0
+                      ? `Você tem ${totalPending} ${totalPending === 1 ? 'item' : 'itens'} para sincronizar`
+                      : 'Todos os dados sincronizados'}
                   </Text>
+                  {totalPending > 0 && (
+                    <Button
+                      title={isSyncing ? 'Sincronizando...' : 'Sincronizar agora'}
+                      onPress={isSyncing ? () => {} : handleSyncNow}
+                      variant="primary"
+                      style={styles.syncBtn}
+                      textStyle={styles.mockAddBtnText}
+                    />
+                  )}
                 </View>
                 <Button
                   title="+ Novo Offline (Mock)"
@@ -555,6 +579,16 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.xs,
     color: theme.colors.textSecondary,
     marginTop: 2,
+  },
+  welcomeTextBlock: {
+    flex: 1,
+    marginRight: theme.spacing.sm,
+  },
+  syncBtn: {
+    height: 34,
+    paddingHorizontal: theme.spacing.md,
+    marginTop: theme.spacing.sm,
+    alignSelf: 'flex-start',
   },
   mockAddBtn: {
     height: 38,

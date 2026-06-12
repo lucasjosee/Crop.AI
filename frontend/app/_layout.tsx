@@ -4,6 +4,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import Toast from 'react-native-toast-message';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNetworkStore } from '../store/useNetworkStore';
+import { useSyncStore } from '../store/useSyncStore';
 import { initDatabase } from '../db/sqlite';
 import { theme } from '../config/theme';
 
@@ -36,6 +37,30 @@ export default function RootLayout() {
     }
     
     setupApp();
+  }, []);
+
+  // 1b. Auto-sync Store & Forward na transição para ONLINE (volta para a sede)
+  useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const unsubscribe = useNetworkStore.subscribe((state, prev) => {
+      if (state.connectionMode === 'ONLINE' && prev.connectionMode !== 'ONLINE') {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          console.log('[RootLayout] Conexão restabelecida — disparando sync automático...');
+          useSyncStore.getState().syncNow();
+        }, 2000);
+      }
+      if (state.connectionMode === 'FIELD' && debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+    });
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      unsubscribe();
+    };
   }, []);
 
   // 2. Auth Guard - Redirecionador automático de rotas
