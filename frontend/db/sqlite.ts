@@ -75,35 +75,42 @@ class WebDatabaseDriver implements IDatabaseDriver {
     })),
     fila_diagnosticos: [],
     fila_feedbacks: [],
-    fila_slm_logs: []
+    fila_slm_logs: [],
+    sync_metadata: []
   };
 
   async execute(sql: string, params: any[] = []): Promise<QueryResult> {
     console.log(`[WebDB] Executing: ${sql}`, params);
     const sqlClean = sql.trim().replace(/\s+/g, ' ').toLowerCase();
 
-    // 1. SELECT ALL FROM TABLE (Simples)
+    // SELECT value FROM sync_metadata WHERE key = ?
+    if (sqlClean.startsWith('select value from sync_metadata')) {
+      const row = this.tables.sync_metadata.find((r) => r.key === params[0]);
+      const arr = row ? [{ value: row.value }] : [];
+      return {
+        rows: { _array: arr, length: arr.length, item: (idx: number) => arr[idx] },
+        rowsAffected: 0,
+      };
+    }
+
+    // 1. SELECT * FROM TABLE (com filtros simples)
     if (sqlClean.startsWith('select * from')) {
       const match = sqlClean.match(/select \* from (\w+)/);
       const tableName = match ? match[1] : '';
       let data = this.tables[tableName] || [];
 
-      // Filtro simples de doencas por ID: id = ?
-      if (sqlClean.includes('where id = ?') || sqlClean.includes('where id = ?;')) {
-        const id = params[0];
-        data = data.filter(d => d.id === id);
+      if (sqlClean.includes('where id = ?')) {
+        data = data.filter(d => d.id === params[0]);
       }
-
-      // Filtro simples de doencas por cultura: id_cultura = ?
-      if (sqlClean.includes('where id_cultura = ?') || sqlClean.includes('where id_cultura = ?;')) {
-        const idCultura = params[0];
-        data = data.filter(d => d.id_cultura === idCultura);
+      if (sqlClean.includes('where id_cultura = ?')) {
+        data = data.filter(d => d.id_cultura === params[0]);
       }
-
-      // Filtro simples de fila de diagnosticos por sync_status = 'PENDING'
-      if (sqlClean.includes("where sync_status = 'pending'") || sqlClean.includes("sync_status = ?")) {
+      if (sqlClean.includes('where sync_status = ?') || sqlClean.includes("where sync_status = 'pending'")) {
         const status = params[0] || 'PENDING';
         data = data.filter(d => d.sync_status === status);
+      }
+      if (sqlClean.includes('where session_id = ?')) {
+        data = data.filter(d => d.session_id === params[0]);
       }
 
       const rowsArray = JSON.parse(JSON.stringify(data));
@@ -117,78 +124,70 @@ class WebDatabaseDriver implements IDatabaseDriver {
       };
     }
 
-    // 2. INSERT INTO FILAS
-    if (sqlClean.startsWith('insert into')) {
-      const parts = sqlClean.split(' ');
-      const tableName = parts[2].split('(')[0];
+    // 2. INSERT (OR REPLACE) genérico — mapeia colunas declaradas para params; upsert pela 1ª coluna
+    const insMatch = sqlClean.match(/^insert (?:or replace )?into (\w+)\s*\(([^)]+)\) values/);
+    if (insMatch) {
+      const tableName = insMatch[1];
+      const cols = insMatch[2].split(',').map((c) => c.trim());
       const dataList = this.tables[tableName];
       if (dataList) {
-        let newRecord: any = {};
-        if (tableName === 'fila_diagnosticos') {
-          newRecord = {
-            local_id: params[0],
-            server_id: params[1],
-            image_uri: params[2],
-            image_s3_key: params[3],
-            latitude: params[4],
-            longitude: params[5],
-            doenca_id: params[6],
-            confianca_ia: params[7],
-            modelo_usado: params[8],
-            tempo_inferencia_ms: params[9],
-            timestamp: new Date().toISOString(),
-            sync_status: params[10] || 'PENDING',
-            retry_count: params[11] || 0
-          };
-        } else if (tableName === 'fila_feedbacks') {
-          newRecord = {
-            id: params[0],
-            diagnostic_local_id: params[1],
-            is_correct: params[2],
-            corrected_doenca_id: params[3],
-            user_correction_notes: params[4],
-            timestamp: new Date().toISOString(),
-            sync_status: params[5] || 'PENDING',
-            retry_count: params[6] || 0
-          };
-        } else if (tableName === 'fila_slm_logs') {
-          newRecord = {
-            session_id: params[0],
-            started_at: params[1],
-            model_version: params[2],
-            interactions_json: params[3],
-            sync_status: params[4] || 'PENDING',
-            retry_count: params[5] || 0
-          };
-        } else {
-          newRecord = { id: params[0] || Math.random().toString(), data: params };
+        const rec: any = {};
+        cols.forEach((c, i) => { rec[c] = params[i]; });
+        // Defaults das filas (igual ao DDL nativo)
+        if (!('timestamp' in rec) && (tableName === 'fila_diagnosticos' || tableName === 'fila_feedbacks')) {
+          rec.timestamp = new Date().toISOString();
         }
-        dataList.push(newRecord);
+        const keyCol = cols[0];
+        const idx = dataList.findIndex((d) => d[keyCol] === rec[keyCol]);
+        if (idx >= 0) {
+          dataList[idx] = { ...dataList[idx], ...rec };
+        } else {
+          dataList.push(rec);
+        }
         return {
           rows: { _array: [], length: 0, item: () => null },
           rowsAffected: 1,
-          insertId: 1
+          insertId: 1,
         };
       }
     }
 
-    // 3. UPDATE FILAS
-    if (sqlClean.startsWith('update')) {
-      const parts = sqlClean.split(' ');
-      const tableName = parts[1];
+    // 3. UPDATE genérico — todos os SETs do app usam apenas `col = ?` e WHERE de chave única
+    const updMatch = sqlClean.match(/^update (\w+) set (.+?) where (\w+) = \?;?$/);
+    if (updMatch) {
+      const tableName = updMatch[1];
+      const setCols = updMatch[2].split(',').map((s) => s.trim().split('=')[0].trim());
+      const keyCol = updMatch[3];
       const dataList = this.tables[tableName];
       if (dataList) {
-        if (tableName === 'fila_diagnosticos' && sqlClean.includes('set sync_status = ?, server_id = ? where local_id = ?')) {
-          const syncStatus = params[0];
-          const serverId = params[1];
-          const localId = params[2];
-          const item = dataList.find(d => d.local_id === localId);
-          if (item) {
-            item.sync_status = syncStatus;
-            item.server_id = serverId;
-          }
-          return { rows: { _array: [], length: 0, item: () => null }, rowsAffected: 1 };
+        const keyVal = params[params.length - 1];
+        const item = dataList.find((d) => d[keyCol] === keyVal);
+        if (item) {
+          setCols.forEach((c, i) => { item[c] = params[i]; });
         }
+        return {
+          rows: { _array: [], length: 0, item: () => null },
+          rowsAffected: item ? 1 : 0,
+        };
+      }
+    }
+
+    // 4. DELETE genérico (com ou sem WHERE de chave única)
+    const delMatch = sqlClean.match(/^delete from (\w+)(?: where (\w+) = \?)?;?$/);
+    if (delMatch) {
+      const tableName = delMatch[1];
+      const keyCol = delMatch[2];
+      const dataList = this.tables[tableName];
+      if (dataList) {
+        if (keyCol) {
+          this.tables[tableName] = dataList.filter((d) => d[keyCol] !== params[0]);
+        } else {
+          this.tables[tableName] = [];
+        }
+        return {
+          rows: { _array: [], length: 0, item: () => null },
+          rowsAffected: 1,
+        };
       }
     }
 
@@ -496,4 +495,28 @@ async function runMigrationsAndSeed(driver: IDatabaseDriver) {
     await driver.execute('PRAGMA user_version = 3;');
     console.log('[Database] Migration to version 3 complete!');
   }
+
+  // v4: tabela de metadados de sincronização (catalog_etag, last_sync_at)
+  if (version < 4) {
+    console.log('[Database] Migrating to version 4: sync_metadata...');
+    await driver.execute(`
+      CREATE TABLE IF NOT EXISTS sync_metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      );
+    `);
+    await driver.execute('PRAGMA user_version = 4;');
+  }
+}
+
+// -------------------------------------------------------------
+// Metadados de Sincronização (catalog_etag, last_sync_at)
+// -------------------------------------------------------------
+export async function getSyncMeta(key: string): Promise<string | null> {
+  const res = await dbDriver.execute('SELECT value FROM sync_metadata WHERE key = ?;', [key]);
+  return res.rows.length > 0 ? (res.rows.item(0).value ?? null) : null;
+}
+
+export async function setSyncMeta(key: string, value: string): Promise<void> {
+  await dbDriver.execute('INSERT OR REPLACE INTO sync_metadata (key, value) VALUES (?, ?);', [key, value]);
 }
