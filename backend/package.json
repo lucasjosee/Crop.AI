@@ -5,11 +5,14 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "db:migrate": "drizzle-kit push",
     "db:seed": "tsx src/db/seeds/run-seed.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "security:audit-s3": "tsx src/scripts/audit-s3-security.ts"
   },
   "keywords": [],
   "author": "",

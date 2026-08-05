@@ -10,12 +10,25 @@ import chatRoutes from './modules/chat/chat.routes';
 import uploadRoutes from './modules/upload/upload.routes';
 import syncRoutes from './modules/sync/sync.routes';
 import catalogRoutes from './modules/catalog/catalog.routes';
+import crossValidationRoutes from './modules/diagnosis/cross-validation.routes';
 import { ALLOWED_ORIGINS } from './config/cors';
 
 export const app = Fastify({
   logger: {
     level: env.NODE_ENV === 'development' ? 'debug' : 'info',
     transport: env.NODE_ENV === 'development' ? { target: 'pino-pretty' } : undefined,
+    redact: {
+      paths: [
+        'req.headers.authorization',
+        'req.headers.cookie',
+        'res.headers.set-cookie',
+        '*.access_token',
+        '*.refresh_token',
+        '*.password',
+        '*.apiKey',
+      ],
+      censor: '[REDACTED]',
+    },
   },
 });
 
@@ -103,6 +116,16 @@ app.register(catalogRoutes, {
   },
 });
 
+app.register(crossValidationRoutes, {
+  prefix: '/api/v1/diagnosis',
+  config: {
+    rateLimit: {
+      max: 20,
+      timeWindow: '1 minute',
+    },
+  },
+});
+
 // Health Check Route
 app.get('/api/v1/health', async (request, reply) => {
   return { status: 'ok', timestamp: new Date().toISOString() };
@@ -163,7 +186,10 @@ app.setErrorHandler((error: FastifyError | AppError | Error, request, reply) => 
     });
   }
 
-  request.log.error(error);
+  request.log.error(
+    { errorName: error.name, errorCode: (error as { code?: string }).code },
+    'Unhandled request error'
+  );
   return reply.status(500).send({
     error: {
       code: 'INTERNAL_ERROR',

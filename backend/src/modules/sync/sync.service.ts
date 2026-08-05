@@ -20,9 +20,37 @@ export class SyncService {
     for (const item of input.diagnostics) {
       try {
         const existing = await db.query.diagnosticos.findFirst({
-          where: eq(diagnosticos.mobileLocalId, item.local_id),
+          where: and(
+            eq(diagnosticos.userId, userId),
+            eq(diagnosticos.mobileLocalId, item.local_id)
+          ),
         });
         if (existing) {
+          const hasServerResult = ['CONFIRMED', 'ENRICHED', 'DIVERGENT'].includes(
+            existing.crossValidationStatus
+          );
+          const incomingCrossValidation = item.cross_validation;
+          await db
+            .update(diagnosticos)
+            .set({
+              imageS3Key: item.image_s3_key,
+              latitude: item.location.lat,
+              longitude: item.location.lng,
+              doencaId: item.ai_result.doenca_id,
+              confiancaIa: item.ai_result.confianca,
+              modeloUsado: item.ai_result.modelo_usado,
+              tempoInferenciaMs: item.ai_result.tempo_inferencia_ms,
+              capturedAt: new Date(item.timestamp),
+              ...(!hasServerResult && incomingCrossValidation
+                ? {
+                    crossValidationStatus: incomingCrossValidation.status,
+                    llmDoencaId: incomingCrossValidation.llm_doenca_id ?? null,
+                    llmConfianca: incomingCrossValidation.llm_confianca ?? null,
+                    llmObservacoes: incomingCrossValidation.llm_observacoes ?? null,
+                  }
+                : {}),
+            })
+            .where(eq(diagnosticos.id, existing.id));
           synced_items.push({ local_id: item.local_id, server_id: existing.id });
           continue;
         }
@@ -51,7 +79,10 @@ export class SyncService {
             confiancaIa: item.ai_result.confianca,
             modeloUsado: item.ai_result.modelo_usado,
             tempoInferenciaMs: item.ai_result.tempo_inferencia_ms,
-            crossValidationStatus: 'SKIPPED',
+            llmDoencaId: item.cross_validation?.llm_doenca_id ?? null,
+            llmConfianca: item.cross_validation?.llm_confianca ?? null,
+            llmObservacoes: item.cross_validation?.llm_observacoes ?? null,
+            crossValidationStatus: item.cross_validation?.status ?? 'SKIPPED',
             capturedAt: new Date(item.timestamp),
           })
           .returning({ id: diagnosticos.id });

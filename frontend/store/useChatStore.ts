@@ -164,8 +164,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           [sessionId, new Date().toISOString(), SLM_MODEL_VERSION, JSON.stringify([interaction]), 'PENDING', 0]
         );
       }
-    } catch (err) {
-      console.warn('[ChatStore] Falha ao registrar log SLM local:', err);
+    } catch {
+      console.warn('[ChatStore] Falha ao registrar log SLM local.');
     }
   },
 }));

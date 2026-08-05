@@ -216,8 +216,8 @@ export async function runImageInference(
       inferenceTimeMs: Date.now() - startTime,
       modelUsed: 'tflite_custom_vision_mobile_v1.0',
     };
-  } catch (err) {
-    console.error('[Inference] Real local TFLite inference execution failed:', err);
+  } catch {
+    console.error('[Inference] Real local TFLite inference execution failed.');
     throw new Error('Falha ao processar a imagem no modelo de IA local.');
   }
 }

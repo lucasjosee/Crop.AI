@@ -4,6 +4,10 @@ import { LLMProvider, LLMMessage, StreamCallbacks } from './providers/llm.provid
 
 // Mock LLM Provider that returns predictable chunks
 class MockLLMProvider implements LLMProvider {
+  async analyzeImage(): Promise<string> {
+    return '{}';
+  }
+
   async stream(
     _systemPrompt: string,
     _history: LLMMessage[],

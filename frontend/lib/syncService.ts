@@ -1,9 +1,9 @@
-import { Platform } from 'react-native';
 import { api } from './api';
 import { dbDriver } from '../db/sqlite';
 import { syncCatalog } from './catalogSyncService';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useAuthStore } from '../store/useAuthStore';
+import { ensureDiagnosticImageUploaded } from './diagnosticImageUploadService';
 
 export const MAX_RETRIES = 5;
 export const CLEANUP_DAYS = 30;
@@ -54,38 +54,11 @@ function toIso(value: string | undefined): string {
 }
 
 async function uploadImageForDiagnostic(row: QueueRow): Promise<string> {
-  const imageUri: string = row.image_uri;
-  const contentType = imageUri.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-  const filename = imageUri.split('/').pop() || 'diagnostico.jpg';
-
-  const { data } = await api.post('/api/v1/upload/url', { filename, content_type: contentType });
-
-  if (Platform.OS !== 'web' && imageUri.startsWith('file://')) {
-    // Nativo: stream do arquivo local direto ao S3 (sem carregar em memória)
-    const FileSystem = require('expo-file-system/legacy');
-    const result = await FileSystem.uploadAsync(data.upload_url, imageUri, {
-      httpMethod: 'PUT',
-      headers: { 'Content-Type': contentType },
-    });
-    if (result.status < 200 || result.status >= 300) {
-      throw new Error(`S3 upload failed: HTTP ${result.status}`);
-    }
-  } else {
-    const source = await fetch(imageUri);
-    const blob = await source.blob();
-    const putRes = await fetch(data.upload_url, {
-      method: 'PUT',
-      headers: { 'Content-Type': contentType },
-      body: blob,
-    });
-    if (!putRes.ok) throw new Error(`S3 upload failed: HTTP ${putRes.status}`);
-  }
-
-  await dbDriver.execute(
-    'UPDATE fila_diagnosticos SET image_s3_key = ? WHERE local_id = ?;',
-    [data.s3_key, row.local_id]
-  );
-  return data.s3_key;
+  return ensureDiagnosticImageUploaded({
+    localId: row.local_id,
+    imageUri: row.image_uri,
+    imageS3Key: row.image_s3_key,
+  });
 }
 
 async function markRetry(table: string, keyCol: string, row: QueueRow): Promise<void> {
@@ -106,9 +79,9 @@ export async function syncPendingDiagnostics(includeFailed = false): Promise<Ste
     if (!row.image_s3_key) {
       try {
         row.image_s3_key = await uploadImageForDiagnostic(row);
-      } catch (err) {
+      } catch {
         // T5.8: item fica fora do lote desta rodada, permanece PENDING
-        console.warn(`[Sync] Upload falhou para ${row.local_id}; mantido como PENDING.`, err);
+        console.warn(`[Sync] Upload falhou para ${row.local_id}; mantido como PENDING.`);
         continue;
       }
     }
@@ -127,6 +100,12 @@ export async function syncPendingDiagnostics(includeFailed = false): Promise<Ste
         confianca: r.confianca_ia ?? 0,
         modelo_usado: r.modelo_usado,
         tempo_inferencia_ms: r.tempo_inferencia_ms ?? 0,
+      },
+      cross_validation: {
+        status: r.cross_validation_status ?? 'SKIPPED',
+        llm_doenca_id: r.llm_doenca_id ?? null,
+        llm_confianca: r.llm_confianca ?? null,
+        llm_observacoes: r.llm_observacoes ?? null,
       },
     })),
   });
@@ -243,4 +222,3 @@ export async function runFullSync(opts: { includeFailed?: boolean } = {}): Promi
     syncInProgress = false;
   }
 }
-

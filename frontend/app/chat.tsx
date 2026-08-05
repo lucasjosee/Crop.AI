@@ -30,6 +30,8 @@ export default function ChatScreen() {
   const [input, setInput] = useState('');
   const [slmStatus, setSlmStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [slmProgress, setSlmProgress] = useState(0);
+  const [requestPending, setRequestPending] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -48,6 +50,7 @@ export default function ChatScreen() {
 
   const { connectionMode } = useNetworkStore();
   const isField = connectionMode === 'FIELD';
+  const isBusy = isStreaming || requestPending;
 
   const prevConnectionMode = useRef(connectionMode);
 
@@ -116,13 +119,14 @@ export default function ChatScreen() {
   }, [diagnosticContext]);
 
   const sendMessage = useCallback(async () => {
-    if (!input.trim() || isStreaming) return;
+    if (!input.trim() || isBusy || (isField && slmStatus !== 'ready')) return;
     const text = input.trim();
     setInput('');
+    setChatError(null);
+    setRequestPending(true);
     addUserMessage(text);
 
     if (isField) {
-      if (slmStatus !== 'ready') return;
       abortControllerRef.current = new AbortController();
       const sqliteCtx = await getSqliteContext();
       const slmHistory = getSlmHistory();
@@ -142,7 +146,11 @@ export default function ChatScreen() {
         finalizeStreaming('LOCAL_SLM');
       } catch {
         finalizeStreaming('LOCAL_SLM');
+        if (!abortControllerRef.current.signal.aborted) {
+          setChatError('Não foi possível gerar a resposta local. Tente novamente.');
+        }
       } finally {
+        setRequestPending(false);
         if (slmResponse.trim()) {
           useChatStore.getState().logSlmInteraction(text, slmResponse, Date.now() - slmStart);
         }
@@ -172,11 +180,26 @@ export default function ChatScreen() {
           : undefined,
         imageS3Key: diagnosticContext?.image_s3_key,
         onChunk: (chunk) => appendToStreaming(chunk),
-        onDone: () => finalizeStreaming('CLOUD_LLM'),
-        onError: () => finalizeStreaming('CLOUD_LLM'),
+        onDone: () => {
+          setRequestPending(false);
+          finalizeStreaming('CLOUD_LLM');
+        },
+        onError: () => {
+          setRequestPending(false);
+          finalizeStreaming('CLOUD_LLM');
+          setChatError('O Agrônomo IA está indisponível. Verifique a conexão e tente novamente.');
+        },
       });
     }
-  }, [input, isStreaming, isField, slmStatus, sessionId, diagnosticContext]);
+  }, [input, isBusy, isField, slmStatus, sessionId, diagnosticContext]);
+
+  const stopResponse = useCallback(() => {
+    abortControllerRef.current?.abort();
+    cleanupRef.current?.();
+    cleanupRef.current = null;
+    setRequestPending(false);
+    finalizeStreaming(isField ? 'LOCAL_SLM' : 'CLOUD_LLM');
+  }, [finalizeStreaming, isField]);
 
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
     if (item.role === 'system') return null;
@@ -204,7 +227,12 @@ export default function ChatScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Voltar"
+          >
             <Text style={styles.backButton}>←</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Agrônomo Virtual</Text>
@@ -224,10 +252,16 @@ export default function ChatScreen() {
         )}
 
         {isField && slmStatus === 'error' && (
-          <View style={styles.errorBanner}>
+          <View style={styles.errorBanner} accessibilityRole="alert">
             <Text style={styles.errorText}>
               Modelo local não disponível. Conecte-se à internet para usar o chat.
             </Text>
+          </View>
+        )}
+
+        {chatError && (
+          <View style={styles.errorBanner} accessibilityRole="alert">
+            <Text style={styles.errorText}>{chatError}</Text>
           </View>
         )}
 
@@ -241,6 +275,15 @@ export default function ChatScreen() {
           onContentSizeChange={() =>
             flatListRef.current?.scrollToEnd({ animated: true })
           }
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>Como posso ajudar na sua lavoura?</Text>
+              <Text style={styles.emptyText}>
+                Pergunte sobre sintomas, manejo ou o diagnóstico recém-realizado.
+              </Text>
+            </View>
+          }
+          accessibilityLabel="Histórico da conversa"
         />
 
         {/* Streaming message */}
@@ -265,17 +308,21 @@ export default function ChatScreen() {
             placeholderTextColor={theme.colors.textSecondary}
             multiline
             maxLength={500}
-            editable={!isStreaming && !(isField && slmStatus !== 'ready')}
+            editable={!isBusy && !(isField && slmStatus !== 'ready')}
+            accessibilityLabel="Mensagem para o agrônomo virtual"
           />
           <TouchableOpacity
             style={[
               styles.sendButton,
-              (!input.trim() || isStreaming) && styles.sendButtonDisabled,
+              (!input.trim() || isBusy || (isField && slmStatus !== 'ready')) && styles.sendButtonDisabled,
             ]}
-            onPress={sendMessage}
-            disabled={!input.trim() || isStreaming}
+            onPress={isBusy ? stopResponse : sendMessage}
+            disabled={!isBusy && (!input.trim() || (isField && slmStatus !== 'ready'))}
+            accessibilityRole="button"
+            accessibilityLabel={isBusy ? 'Parar resposta' : 'Enviar mensagem'}
+            accessibilityState={{ disabled: !isBusy && (!input.trim() || (isField && slmStatus !== 'ready')), busy: isBusy }}
           >
-            <Text style={styles.sendButtonText}>{isStreaming ? '⏸' : '➤'}</Text>
+            <Text style={styles.sendButtonText}>{isBusy ? '■' : '➤'}</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -321,6 +368,24 @@ const styles = StyleSheet.create({
   },
   errorText: { color: theme.colors.error, fontSize: theme.typography.fontSize.sm },
   messagesList: { padding: theme.spacing.md, gap: theme.spacing.sm },
+  emptyState: {
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: 72,
+  },
+  emptyTitle: {
+    color: theme.colors.text,
+    fontSize: theme.typography.fontSize.lg,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  emptyText: {
+    color: theme.colors.textSecondary,
+    fontSize: theme.typography.fontSize.sm,
+    lineHeight: 20,
+    marginTop: theme.spacing.sm,
+    textAlign: 'center',
+  },
   messageRow: { marginVertical: 2 },
   userRow: { alignItems: 'flex-end' },
   assistantRow: { alignItems: 'flex-start' },

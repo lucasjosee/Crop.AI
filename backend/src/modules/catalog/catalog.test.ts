@@ -7,6 +7,7 @@ import { usuarios, refreshTokens, culturas, doencas } from '../../db/schema';
 
 const culturaId = `cultura-test-${randomUUID()}`;
 let doencaId: string;
+let extraDoencaId: string;
 let accessToken: string;
 
 async function callSync(query: string = '', etag?: string) {
@@ -38,15 +39,20 @@ describe('GET /api/v1/catalog/sync (integration)', () => {
     accessToken = JSON.parse(loginRes.body).access_token;
 
     await db.insert(culturas).values({ id: culturaId, nome: 'Cultura Catalog', estagioFenologicoPadrao: [] });
-    const [d] = await db
+    const [d, extra] = await db
       .insert(doencas)
-      .values({ idCultura: culturaId, nomeComum: 'Doenca Catalog v1', sintomas: 'sintoma inicial' })
+      .values([
+        { idCultura: culturaId, nomeComum: 'Doenca Catalog v1', sintomas: 'sintoma inicial' },
+        { idCultura: culturaId, nomeComum: 'Doenca Catalog extra', sintomas: 'fixture de paginação' },
+      ])
       .returning({ id: doencas.id });
     doencaId = d.id;
+    extraDoencaId = extra.id;
   });
 
   afterAll(async () => {
     await db.delete(doencas).where(eq(doencas.id, doencaId));
+    await db.delete(doencas).where(eq(doencas.id, extraDoencaId));
     await db.delete(culturas).where(eq(culturas.id, culturaId));
     await db.delete(refreshTokens);
     await db.delete(usuarios);

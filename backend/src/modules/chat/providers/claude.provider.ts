@@ -1,6 +1,6 @@
 // backend/src/modules/chat/providers/claude.provider.ts
 import Anthropic from '@anthropic-ai/sdk';
-import type { LLMProvider, LLMMessage, StreamCallbacks } from './llm.provider';
+import type { LLMProvider, LLMMessage, StreamCallbacks, LLMImageInput } from './llm.provider';
 import { LLM_MAX_TOKENS, LLM_TEMPERATURE } from '../../../config/llm';
 
 export class ClaudeProvider implements LLMProvider {
@@ -51,5 +51,39 @@ export class ClaudeProvider implements LLMProvider {
     }
 
     callbacks.onDone(outputTokens);
+  }
+
+  async analyzeImage(
+    systemPrompt: string,
+    userPrompt: string,
+    image: LLMImageInput
+  ): Promise<string> {
+    const response = await this.client.messages.create({
+      model: this.modelId,
+      max_tokens: LLM_MAX_TOKENS,
+      temperature: LLM_TEMPERATURE,
+      system: systemPrompt,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: image.mimeType,
+                data: image.dataBase64,
+              },
+            },
+            { type: 'text', text: userPrompt },
+          ],
+        },
+      ],
+    });
+
+    return response.content
+      .filter((block) => block.type === 'text')
+      .map((block) => block.text)
+      .join('');
   }
 }

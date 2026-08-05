@@ -9,7 +9,11 @@ export const ConnectionIndicator: React.FC = () => {
 
   if (connectionMode === 'ONLINE') {
     return (
-      <View style={[styles.container, styles.online]}>
+      <View
+        style={[styles.container, styles.online]}
+        accessibilityRole="text"
+        accessibilityLabel="Conexão online"
+      >
         <Ionicons name="cloud" size={16} color={theme.colors.primary} style={styles.icon} />
         <Text style={styles.text}>Modo Online</Text>
       </View>
@@ -18,7 +22,13 @@ export const ConnectionIndicator: React.FC = () => {
 
   if (connectionMode === 'DEGRADED') {
     return (
-      <Pressable onPress={forceCheck} style={[styles.container, styles.degraded]}>
+      <Pressable
+        onPress={forceCheck}
+        style={[styles.container, styles.degraded]}
+        accessibilityRole="button"
+        accessibilityLabel="Conexão instável"
+        accessibilityHint="Verifica a conexão novamente"
+      >
         <Ionicons name="cloud" size={16} color={theme.colors.warning} style={styles.icon} />
         <Text style={styles.text}>Conexão Instável</Text>
       </Pressable>
@@ -27,7 +37,13 @@ export const ConnectionIndicator: React.FC = () => {
 
   if (connectionMode === 'FIELD') {
     return (
-      <Pressable onPress={forceCheck} style={[styles.container, styles.field]}>
+      <Pressable
+        onPress={forceCheck}
+        style={[styles.container, styles.field]}
+        accessibilityRole="button"
+        accessibilityLabel="Modo campo offline"
+        accessibilityHint="Verifica a conexão novamente"
+      >
         <Ionicons name="cloud-offline" size={16} color={theme.colors.error} style={styles.icon} />
         <Text style={styles.text}>Modo Campo (Offline)</Text>
       </Pressable>
@@ -35,7 +51,11 @@ export const ConnectionIndicator: React.FC = () => {
   }
 
   return (
-    <View style={[styles.container, styles.probing]}>
+    <View
+      style={[styles.container, styles.probing]}
+      accessibilityRole="progressbar"
+      accessibilityLabel="Verificando conexão"
+    >
       <Ionicons name="cloud-outline" size={16} color={theme.colors.info} style={styles.icon} />
       <Text style={styles.text}>Verificando sinal...</Text>
     </View>

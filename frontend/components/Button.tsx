@@ -21,6 +21,8 @@ interface ButtonProps {
   textStyle?: StyleProp<TextStyle>;
   icon?: React.ReactNode;
   iconPosition?: 'left' | 'right';
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 }
 
 export const Button: React.FC<ButtonProps> = ({
@@ -33,6 +35,8 @@ export const Button: React.FC<ButtonProps> = ({
   textStyle,
   icon,
   iconPosition = 'left',
+  accessibilityLabel,
+  accessibilityHint,
 }) => {
   const isButtonDisabled = disabled || loading;
 
@@ -56,6 +60,10 @@ export const Button: React.FC<ButtonProps> = ({
       onPress={onPress}
       disabled={isButtonDisabled}
       style={buttonStyles}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: isButtonDisabled, busy: loading }}
     >
       {loading ? (
         <ActivityIndicator 

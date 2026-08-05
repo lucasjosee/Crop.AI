@@ -122,7 +122,7 @@ api.interceptors.response.use(
         processQueue(refreshError, null);
 
         // Força deslogar limpando o estado do app e chaves locais
-        console.warn('[API Interceptor] Falha crítica na rotação do Refresh Token. Forçando Logout.', refreshError?.message);
+        console.warn('[API Interceptor] Falha crítica na rotação do Refresh Token. Forçando logout.');
         const { useAuthStore } = require('../store/useAuthStore');
         await useAuthStore.getState().logout();
 

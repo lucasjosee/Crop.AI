@@ -14,6 +14,14 @@ export const syncDiagnosticsSchema = z.object({
           modelo_usado: z.string().min(1),
           tempo_inferencia_ms: z.number().int(),
         }),
+        cross_validation: z
+          .object({
+            status: z.enum(['PENDING', 'CONFIRMED', 'ENRICHED', 'DIVERGENT', 'SKIPPED']),
+            llm_doenca_id: z.string().uuid().nullable().optional(),
+            llm_confianca: z.number().min(0).max(1).nullable().optional(),
+            llm_observacoes: z.string().nullable().optional(),
+          })
+          .optional(),
       })
     )
     .min(1)

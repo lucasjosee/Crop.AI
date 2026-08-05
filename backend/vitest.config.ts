@@ -5,5 +5,6 @@ export default defineConfig({
     // Integration tests share a real PostgreSQL instance — must run serially
     // to avoid FK constraint violations from concurrent db.delete(usuarios).
     fileParallelism: false,
+    exclude: ['dist/**', 'node_modules/**'],
   },
 });

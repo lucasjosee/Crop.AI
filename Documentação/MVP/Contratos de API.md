@@ -380,6 +380,12 @@ Sincroniza o lote de diagnósticos feitos offline. É devolvido o `server_id` ge
         "confianca": 0.88,
         "modelo_usado": "coreml_v1.2",
         "tempo_inferencia_ms": 45
+      },
+      "cross_validation": {
+        "status": "ENRICHED",
+        "llm_doenca_id": null,
+        "llm_confianca": 0.88,
+        "llm_observacoes": "Possível deficiência nutricional adicional."
       }
     }
   ]
@@ -388,6 +394,8 @@ Sincroniza o lote de diagnósticos feitos offline. É devolvido o `server_id` ge
 
 > [!NOTE]
 > **Formato do campo `modelo_usado`:** Seguir o padrão `{runtime}_{versão}` para rastreabilidade. Valores esperados: `coreml_v1.0`, `tflite_v1.0`, etc. A versão reflete a iteração do modelo treinado no Azure Custom Vision.
+
+O objeto `cross_validation` é opcional. Ele preserva pelo Store & Forward um estado obtido no aparelho. Se o backend já possuir `CONFIRMED`, `ENRICHED` ou `DIVERGENT` para o mesmo `diagnostic_local_id` e usuário, o sync hidrata os metadados do diagnóstico, mas não sobrescreve a segunda opinião finalizada.
 
 **Response (200 OK):**
 ```json
@@ -563,7 +571,7 @@ Quando o app está online e o produtor faz um diagnóstico, a imagem é enviada 
 ```json
 {
   "diagnostic_local_id": "uuid-gerado-no-sqlite-do-celular",
-  "image_s3_key": "diagnostics/user-123/2026-05-23/abc123.jpg",
+  "image_s3_key": "diagnosticos/user-123/abc123.jpg",
   "cv_result": {
     "doenca_id": "doenca_ferrugem",
     "doenca_nome": "Ferrugem",
@@ -573,6 +581,12 @@ Quando o app está online e o produtor faz um diagnóstico, a imagem é enviada 
   }
 }
 ```
+
+**Validações do Servidor:**
+- `user_id` não é aceito no payload; a autoria vem exclusivamente do JWT.
+- `image_s3_key` deve pertencer ao prefixo `diagnosticos/{user_id}/` do usuário autenticado.
+- `diagnostic_local_id` é idempotente por usuário. Repetições retornam a segunda opinião já persistida.
+- `doenca_id` deve ser um UUID ativo do catálogo local/central.
 
 **Response (JSON):**
 ```json
@@ -628,6 +642,5 @@ Quando o app está online e o produtor faz um diagnóstico, a imagem é enviada 
 | `504` | `LLM_TIMEOUT` | O LLM demorou mais de 15s para responder. Tratar como `SKIPPED`. |
 
 ---
-
 
 

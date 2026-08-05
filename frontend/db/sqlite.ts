@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import { assertSqlCipherAvailable } from './security';
 
 import doencasData from './seeds/doencas.json';
 import defensivosData from './seeds/defensivos.json';
@@ -104,6 +105,12 @@ class WebDatabaseDriver implements IDatabaseDriver {
       }
       if (sqlClean.includes('where id_cultura = ?')) {
         data = data.filter(d => d.id_cultura === params[0]);
+      }
+      if (sqlClean.includes('where local_id = ?')) {
+        data = data.filter(d => d.local_id === params[0]);
+      }
+      if (sqlClean.includes('where diagnostic_local_id = ?')) {
+        data = data.filter(d => d.diagnostic_local_id === params[0]);
       }
       if (sqlClean.includes('where sync_status = ?') || sqlClean.includes("where sync_status = 'pending'")) {
         const status = params[0] || 'PENDING';
@@ -247,17 +254,25 @@ export async function initDatabase(): Promise<IDatabaseDriver> {
     }
 
     try {
-      const { open } = require('@op-engineering/op-sqlite');
+      const { open, isSQLCipher } = require('@op-engineering/op-sqlite');
+
+      if (!isSQLCipher()) {
+        throw new Error('Banco local seguro indisponível neste build.');
+      }
 
       const keyName = 'crop_ai_db_secret_key';
-      let dbKey = await SecureStore.getItemAsync(keyName);
+      let dbKey = await SecureStore.getItemAsync(keyName, {
+        keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+      });
 
       if (!dbKey) {
         console.log('[Database] Generating secure key via expo-crypto...');
         const Crypto = require('expo-crypto');
         const bytes = await Crypto.getRandomBytesAsync(32) as Uint8Array;
         const newKey = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-        await SecureStore.setItemAsync(keyName, newKey);
+        await SecureStore.setItemAsync(keyName, newKey, {
+          keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+        });
         dbKey = newKey;
       }
 
@@ -268,6 +283,11 @@ export async function initDatabase(): Promise<IDatabaseDriver> {
       });
 
       const driver = new NativeDatabaseDriver(db);
+
+      const cipherResult = await driver.execute('PRAGMA cipher_version;');
+      const cipherVersion = cipherResult.rows.item(0)?.cipher_version;
+      assertSqlCipherAvailable(true, cipherVersion);
+
       dbDriver = driver;
 
       // Habilitar chaves estrangeiras imediatamente no driver nativo
@@ -278,10 +298,9 @@ export async function initDatabase(): Promise<IDatabaseDriver> {
 
       return dbDriver;
     } catch (error) {
-      console.error('[Database] Failed to initialize native database:', error);
-      console.log('[Database] Falling back to Web Memory Database due to errors.');
-      dbDriver = new WebDatabaseDriver();
-      return dbDriver;
+      initPromise = null;
+      console.error('[Database] Native encrypted database initialization failed.');
+      throw error;
     }
   })();
 
@@ -296,8 +315,8 @@ async function runMigrationsAndSeed(driver: IDatabaseDriver) {
   try {
     const versionRes = await driver.execute('PRAGMA user_version;');
     version = versionRes.rows._array[0]?.user_version || 0;
-  } catch (e) {
-    console.warn('[Database] Failed to read user_version, assuming 0', e);
+  } catch {
+    console.warn('[Database] Failed to read user_version, assuming 0.');
   }
 
   console.log(`[Database] Current database version is: ${version}`);
@@ -397,8 +416,8 @@ async function runMigrationsAndSeed(driver: IDatabaseDriver) {
     console.log('[Database] Migrating version 1 to 2: Adding causa to doencas...');
     try {
       await driver.execute('ALTER TABLE doencas ADD COLUMN causa TEXT;');
-    } catch (e) {
-      console.warn('[Database] causa column might already exist:', e);
+    } catch {
+      console.warn('[Database] causa column might already exist.');
     }
   }
 
@@ -407,8 +426,8 @@ async function runMigrationsAndSeed(driver: IDatabaseDriver) {
     console.log('[Database] Adding max_aplicacoes_ciclo to doenca_defensivo...');
     try {
       await driver.execute('ALTER TABLE doenca_defensivo ADD COLUMN max_aplicacoes_ciclo INTEGER NOT NULL DEFAULT 0;');
-    } catch (e) {
-      console.warn('[Database] max_aplicacoes_ciclo column might already exist:', e);
+    } catch {
+      console.warn('[Database] max_aplicacoes_ciclo column might already exist.');
     }
   }
 
@@ -506,6 +525,27 @@ async function runMigrationsAndSeed(driver: IDatabaseDriver) {
       );
     `);
     await driver.execute('PRAGMA user_version = 4;');
+  }
+
+  // v5: campos da segunda opinião visual; aditivos para preservar bases existentes
+  if (version < 5) {
+    console.log('[Database] Migrating to version 5: cross-validation visual...');
+    const statements = [
+      "ALTER TABLE fila_diagnosticos ADD COLUMN cross_validation_status TEXT NOT NULL DEFAULT 'PENDING' CHECK(cross_validation_status IN ('PENDING', 'CONFIRMED', 'ENRICHED', 'DIVERGENT', 'SKIPPED'));",
+      'ALTER TABLE fila_diagnosticos ADD COLUMN llm_doenca_id TEXT REFERENCES doencas(id);',
+      'ALTER TABLE fila_diagnosticos ADD COLUMN llm_doenca_nome TEXT;',
+      'ALTER TABLE fila_diagnosticos ADD COLUMN llm_confianca REAL;',
+      'ALTER TABLE fila_diagnosticos ADD COLUMN llm_observacoes TEXT;',
+      'ALTER TABLE fila_diagnosticos ADD COLUMN cross_validation_error_code TEXT;',
+    ];
+    for (const statement of statements) {
+      try {
+        await driver.execute(statement);
+      } catch {
+        console.warn('[Database] Cross-validation column might already exist.');
+      }
+    }
+    await driver.execute('PRAGMA user_version = 5;');
   }
 }
 

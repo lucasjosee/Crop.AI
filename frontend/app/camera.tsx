@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
+  TextInput,
   useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -26,6 +27,17 @@ import { runImageInference, InferenceResult } from '../lib/inference';
 import { saveImagePersistently } from '../lib/imageHelper';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
+import { useChatStore } from '../store/useChatStore';
+import {
+  crossValidateDiagnostic,
+  getCrossValidationPriority,
+  markCrossValidationSkipped,
+  type CrossValidationResult,
+} from '../lib/crossValidationService';
+import {
+  buildDiagnosticChatContext,
+  queueDiagnosisFeedback,
+} from '../lib/diagnosisFeedbackService';
 
 // Constant fallback GPS coordinate: Soy region in Sorriso, MT
 const MATO_GROSSO_FALLBACK_GPS = { latitude: -12.5422, longitude: -55.7144 };
@@ -44,8 +56,8 @@ if (Platform.OS !== 'web') {
     NativeCamera = VisionCamera.Camera;
     _rawCameraPermissionHook = VisionCamera.useCameraPermission;
     _rawCameraDeviceHook = VisionCamera.useCameraDevice;
-  } catch (e) {
-    console.warn('[Camera] Failed to load react-native-vision-camera dynamically:', e);
+  } catch {
+    console.warn('[Camera] Failed to load react-native-vision-camera dynamically.');
   }
 }
 
@@ -81,6 +93,22 @@ export default function CameraScreen() {
   // Database detail states
   const [diseaseDetails, setDiseaseDetails] = useState<any | null>(null);
   const [defensivesList, setDefensivesList] = useState<any[]>([]);
+  const [diagnosticLocalId, setDiagnosticLocalId] = useState<string | null>(null);
+  const [imageS3Key, setImageS3Key] = useState<string | null>(null);
+  const [crossValidationState, setCrossValidationState] = useState<
+    'IDLE' | 'LOADING' | 'COMPLETE' | 'SKIPPED' | 'UNAVAILABLE'
+  >('IDLE');
+  const [crossValidationResult, setCrossValidationResult] =
+    useState<CrossValidationResult | null>(null);
+  const [feedbackChoice, setFeedbackChoice] = useState<
+    'CORRECT' | 'INCORRECT' | 'OTHER' | 'LLM' | null
+  >(null);
+  const [feedbackNotes, setFeedbackNotes] = useState('');
+  const [correctedDiseaseId, setCorrectedDiseaseId] = useState<string | null>(null);
+  const [feedbackDiseases, setFeedbackDiseases] = useState<any[]>([]);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const diagnosticPersistenceRef = useRef<Promise<string> | null>(null);
 
   // Debug settings for dev simulation
   const [showDebugPanel, setShowDebugPanel] = useState(false);
@@ -102,8 +130,8 @@ export default function CameraScreen() {
         } else {
           setGpsLocation(MATO_GROSSO_FALLBACK_GPS);
         }
-      } catch (err) {
-        console.warn('[Camera] Geolocation request error:', err);
+      } catch {
+        console.warn('[Camera] Geolocation request failed.');
         setGpsLocation(MATO_GROSSO_FALLBACK_GPS);
       }
 
@@ -132,8 +160,8 @@ export default function CameraScreen() {
           webVideoRef.current.srcObject = stream;
         }
       }
-    } catch (err) {
-      console.warn('[Camera] Webcam access denied or not available on web:', err);
+    } catch {
+      console.warn('[Camera] Webcam access denied or unavailable on web.');
       Toast.show({
         type: 'info',
         text1: 'Aviso de Câmera Web',
@@ -176,8 +204,8 @@ export default function CameraScreen() {
       if (!result.canceled && result.assets && result.assets[0].uri) {
         processDiagnostic(result.assets[0].uri);
       }
-    } catch (err) {
-      console.error('[Camera] Pick image from gallery failed:', err);
+    } catch {
+      console.error('[Camera] Pick image from gallery failed.');
       Toast.show({
         type: 'error',
         text1: 'Erro de Galeria',
@@ -200,8 +228,8 @@ export default function CameraScreen() {
             const dataUrl = canvas.toDataURL('image/jpeg');
             processDiagnostic(dataUrl);
           }
-        } catch (e) {
-          console.error('[Camera] Canvas screenshot failed, fallback to local base64:', e);
+        } catch {
+          console.error('[Camera] Canvas screenshot failed; using local fallback.');
           processDiagnostic(LOCAL_MOCK_IMAGE_BASE64);
         }
       } else {
@@ -223,8 +251,8 @@ export default function CameraScreen() {
         });
         const localUri = `file://${photo.path}`;
         processDiagnostic(localUri);
-      } catch (err) {
-        console.error('[Camera] Native capture failed:', err);
+      } catch {
+        console.error('[Camera] Native capture failed.');
         Toast.show({
           type: 'error',
           text1: 'Erro de Captura',
@@ -241,22 +269,43 @@ export default function CameraScreen() {
   ) => {
     setIsProcessing(true);
     setCapturedImage(uri);
+    setDiagnosticLocalId(null);
+    setImageS3Key(null);
+    setCrossValidationState('IDLE');
+    setCrossValidationResult(null);
+    setFeedbackChoice(null);
+    setFeedbackNotes('');
+    setCorrectedDiseaseId(null);
+    setFeedbackSubmitted(false);
+    diagnosticPersistenceRef.current = null;
     stopWebcam();
 
     try {
       // A. Run inference (propagates real errors now)
       const result = await runImageInference(uri, forcedTarget);
       setInferenceResult(result);
+      // O resultado local é liberado antes de qualquer operação de rede.
+      setIsProcessing(false);
 
       // B. Load details from DB if not Healthy/Phytotoxicity
+      let details: any | null = null;
       if (result.diseaseId !== 'Saudável' && result.diseaseId !== 'Fitotoxicidade') {
-        await loadDetailsFromLocalDB(result.diseaseId);
+        details = await loadDetailsFromLocalDB(result.diseaseId);
       } else {
         setDiseaseDetails(null);
         setDefensivesList([]);
       }
-    } catch (err) {
-      console.error('[Camera] Diagnostic processing failed:', err);
+
+      const diseasesRes = await dbDriver.execute('SELECT * FROM doencas;');
+      setFeedbackDiseases(diseasesRes.rows._array);
+
+      const persistence = persistDiagnosticAndStartCrossValidation(uri, result, details);
+      diagnosticPersistenceRef.current = persistence;
+      void persistence.catch(() => {
+        console.error('[Camera] Failed to persist local diagnosis.');
+      });
+    } catch {
+      console.error('[Camera] Diagnostic processing failed.');
       Toast.show({
         type: 'error',
         text1: 'Erro de Diagnóstico',
@@ -271,16 +320,15 @@ export default function CameraScreen() {
   };
 
   // Safe multi-query join fallback for Web & Native
-  const loadDetailsFromLocalDB = async (diseaseId: string) => {
+  const loadDetailsFromLocalDB = async (diseaseId: string): Promise<any | null> => {
     try {
       // 1. Get Disease Info
       const diseaseRes = await dbDriver.execute(
         'SELECT * FROM doencas WHERE id = ?;',
         [diseaseId]
       );
-      if (diseaseRes.rows.length > 0) {
-        setDiseaseDetails(diseaseRes.rows.item(0));
-      }
+      const details = diseaseRes.rows.length > 0 ? diseaseRes.rows.item(0) : null;
+      setDiseaseDetails(details);
 
       // 2. Query relations manually
       const relationRes = await dbDriver.execute('SELECT * FROM doenca_defensivo;');
@@ -312,14 +360,82 @@ export default function CameraScreen() {
         .filter(Boolean);
 
       setDefensivesList(items);
-    } catch (e) {
-      console.error('[Camera] SQLite lookup error:', e);
+      return details;
+    } catch {
+      console.error('[Camera] SQLite lookup failed.');
       Toast.show({
         type: 'error',
         text1: 'Erro de Leitura local',
         text2: 'Não foi possível carregar os tratamentos recomendados.',
       });
+      return null;
     }
+  };
+
+  const persistDiagnosticAndStartCrossValidation = async (
+    sourceImageUri: string,
+    result: InferenceResult,
+    details: any | null
+  ): Promise<string> => {
+    const persistentPath = await saveImagePersistently(sourceImageUri);
+    const localId = Crypto.randomUUID();
+    const isSpecial = result.diseaseId === 'Saudável' || result.diseaseId === 'Fitotoxicidade';
+
+    await dbDriver.execute(
+      `INSERT INTO fila_diagnosticos (
+        local_id, server_id, image_uri, image_s3_key, latitude, longitude,
+        doenca_id, confianca_ia, modelo_usado, tempo_inferencia_ms,
+        sync_status, retry_count, cross_validation_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      [
+        localId,
+        null,
+        persistentPath,
+        null,
+        gpsLocation?.latitude || MATO_GROSSO_FALLBACK_GPS.latitude,
+        gpsLocation?.longitude || MATO_GROSSO_FALLBACK_GPS.longitude,
+        isSpecial ? null : result.diseaseId,
+        result.confidence,
+        result.modelUsed,
+        result.inferenceTimeMs,
+        'PENDING',
+        0,
+        isSpecial || connectionMode !== 'ONLINE' ? 'SKIPPED' : 'PENDING',
+      ]
+    );
+    setDiagnosticLocalId(localId);
+
+    if (isSpecial || connectionMode !== 'ONLINE') {
+      await markCrossValidationSkipped(localId);
+      setCrossValidationState('SKIPPED');
+      return localId;
+    }
+
+    setCrossValidationState('LOADING');
+    void crossValidateDiagnostic({
+      localId,
+      imageUri: sourceImageUri,
+      cvResult: {
+        doencaId: result.diseaseId,
+        doencaNome: details?.nome_comum ?? 'Doença identificada pelo modelo local',
+        confianca: result.confidence,
+        modeloUsado: result.modelUsed,
+        tempoInferenciaMs: result.inferenceTimeMs,
+      },
+      onImageUploaded: setImageS3Key,
+    })
+      .then(({ imageS3Key: uploadedKey, result: secondOpinion }) => {
+        setImageS3Key(uploadedKey);
+        setCrossValidationResult(secondOpinion);
+        setCrossValidationState('COMPLETE');
+      })
+      .catch(async (error) => {
+        const errorCode = error?.code ?? 'LLM_UNAVAILABLE';
+        await markCrossValidationSkipped(localId, errorCode);
+        setCrossValidationState('UNAVAILABLE');
+      });
+
+    return localId;
   };
 
   // 5. Store and Forward - Save in Local SQLite
@@ -327,32 +443,7 @@ export default function CameraScreen() {
     if (!capturedImage || !inferenceResult) return;
 
     try {
-      const persistentPath = await saveImagePersistently(capturedImage);
-      const localId = Crypto.randomUUID();
-
-      // Save in SQLite queue table
-      await dbDriver.execute(
-        `INSERT INTO fila_diagnosticos (
-          local_id, server_id, image_uri, image_s3_key, latitude, longitude, 
-          doenca_id, confianca_ia, modelo_usado, tempo_inferencia_ms, sync_status, retry_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-        [
-          localId,
-          null,
-          persistentPath,
-          null,
-          gpsLocation?.latitude || MATO_GROSSO_FALLBACK_GPS.latitude,
-          gpsLocation?.longitude || MATO_GROSSO_FALLBACK_GPS.longitude,
-          inferenceResult.diseaseId === 'Saudável' || inferenceResult.diseaseId === 'Fitotoxicidade'
-            ? null
-            : inferenceResult.diseaseId,
-          inferenceResult.confidence,
-          inferenceResult.modelUsed,
-          inferenceResult.inferenceTimeMs,
-          'PENDING',
-          0,
-        ]
-      );
+      await diagnosticPersistenceRef.current;
 
       Toast.show({
         type: 'success',
@@ -361,8 +452,8 @@ export default function CameraScreen() {
       });
 
       router.replace('/');
-    } catch (err) {
-      console.error('[Camera] Failed to write local history:', err);
+    } catch {
+      console.error('[Camera] Failed to write local history.');
       Toast.show({
         type: 'error',
         text1: 'Erro de Banco de Dados',
@@ -377,17 +468,78 @@ export default function CameraScreen() {
     setInferenceResult(null);
     setDiseaseDetails(null);
     setDefensivesList([]);
+    setDiagnosticLocalId(null);
+    setImageS3Key(null);
+    setCrossValidationState('IDLE');
+    setCrossValidationResult(null);
+    setFeedbackChoice(null);
+    setFeedbackSubmitted(false);
+    diagnosticPersistenceRef.current = null;
     if (Platform.OS === 'web') startWebcam();
   };
 
   // Navigation to Chat
-  const handleGoToChat = () => {
-    Toast.show({
-      type: 'info',
-      text1: 'Agrônomo Virtual',
-      text2: 'Direcionando ao Chat com Agrônomo (Sprint 4).',
-    });
-    router.replace('/');
+  const handleGoToChat = async () => {
+    if (!inferenceResult) return;
+    try {
+      await diagnosticPersistenceRef.current;
+    } catch {
+      console.warn('[Camera] Opening chat without persisted diagnosis.');
+    }
+    useChatStore.getState().setDiagnosticContext(
+      buildDiagnosticChatContext(
+        inferenceResult,
+        diseaseDetails?.nome_comum,
+        imageS3Key
+      )
+    );
+    router.push('/chat');
+  };
+
+  const handleSubmitFeedback = async () => {
+    if (!feedbackChoice || feedbackSubmitted) return;
+    if (feedbackChoice === 'OTHER' && !correctedDiseaseId) {
+      Toast.show({
+        type: 'info',
+        text1: 'Selecione a doença',
+        text2: 'Informe qual doença parece ser a correta.',
+      });
+      return;
+    }
+
+    setIsSubmittingFeedback(true);
+    try {
+      const localId = diagnosticLocalId ?? (await diagnosticPersistenceRef.current);
+      if (!localId) throw new Error('Diagnóstico local ainda não foi persistido.');
+      const divergentChoiceNote =
+        feedbackChoice === 'LLM' ? 'Produtor escolheu a opinião do Agrônomo IA.' : '';
+      await queueDiagnosisFeedback({
+        diagnosticLocalId: localId,
+        isCorrect: feedbackChoice === 'CORRECT',
+        correctedDoencaId:
+          feedbackChoice === 'LLM'
+            ? crossValidationResult?.llm_doenca_id
+            : feedbackChoice === 'OTHER'
+              ? correctedDiseaseId
+              : null,
+        notes: [divergentChoiceNote, feedbackNotes.trim()].filter(Boolean).join(' '),
+      });
+      setFeedbackSubmitted(true);
+      Toast.show({
+        type: 'success',
+        text1: 'Feedback registrado',
+        text2: 'Sua avaliação será sincronizada quando houver conexão.',
+      });
+    } catch {
+      console.error('[Camera] Failed to queue feedback.');
+      Toast.show({
+        type: 'error',
+        text1: 'Erro ao registrar feedback',
+        text2: 'Tente novamente em instantes.',
+      });
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
   };
 
   // --- RENDERS ---
@@ -407,6 +559,9 @@ export default function CameraScreen() {
   if (inferenceResult && capturedImage) {
     const isHealthy = inferenceResult.diseaseId === 'Saudável';
     const isPhyto = inferenceResult.diseaseId === 'Fitotoxicidade';
+    const crossValidationPriority = crossValidationResult
+      ? getCrossValidationPriority(inferenceResult.confidence, crossValidationResult)
+      : null;
 
     // Set severity metrics
     let severityLevel = 1;
@@ -486,6 +641,76 @@ export default function CameraScreen() {
 
             <View style={styles.divider} />
 
+            {!isHealthy && !isPhyto && crossValidationState === 'LOADING' && (
+              <View style={styles.crossValidationLoading}>
+                <ActivityIndicator size="small" color={theme.colors.primary} />
+                <Text style={styles.crossValidationLoadingText}>Consultando Agrônomo IA...</Text>
+              </View>
+            )}
+
+            {!isHealthy && !isPhyto && crossValidationState === 'COMPLETE' && crossValidationResult && (
+              <View
+                style={[
+                  styles.crossValidationCard,
+                  crossValidationResult.result_status === 'DIVERGENT' && styles.crossValidationDivergent,
+                ]}
+              >
+                <View style={styles.specialBoxHeader}>
+                  <Ionicons
+                    name={
+                      crossValidationResult.result_status === 'DIVERGENT'
+                        ? 'warning-outline'
+                        : crossValidationResult.result_status === 'ENRICHED'
+                          ? 'bulb-outline'
+                          : 'checkmark-circle-outline'
+                    }
+                    size={22}
+                    color={
+                      crossValidationResult.result_status === 'DIVERGENT'
+                        ? theme.colors.warning
+                        : theme.colors.primary
+                    }
+                  />
+                  <Text style={styles.crossValidationTitle}>
+                    {crossValidationResult.result_status === 'CONFIRMED'
+                      ? 'Diagnóstico confirmado'
+                      : crossValidationResult.result_status === 'ENRICHED'
+                        ? 'Diagnóstico enriquecido'
+                        : 'As análises divergiram'}
+                  </Text>
+                </View>
+
+                {crossValidationResult.result_status === 'DIVERGENT' && (
+                  <View style={styles.divergentOpinions}>
+                    <Text style={styles.opinionText}>
+                      🔬 Modelo local: {diseaseDetails?.nome_comum ?? 'doença identificada'} ({Math.round(inferenceResult.confidence * 100)}%)
+                      {crossValidationPriority?.primary === 'CV' ? ' • resultado primário' : ''}
+                    </Text>
+                    <Text style={styles.opinionText}>
+                      ☁️ Agrônomo IA: {crossValidationResult.llm_doenca_nome ?? 'outra hipótese'} ({Math.round(crossValidationResult.llm_confianca * 100)}%)
+                      {crossValidationPriority?.primary === 'LLM' ? ' • sugestão primária' : ''}
+                    </Text>
+                    <Text style={styles.divergenceWarning}>
+                      As duas opiniões permanecem visíveis. Consulte um engenheiro agrônomo para confirmar.
+                    </Text>
+                  </View>
+                )}
+
+                <Text style={styles.crossValidationObservations}>
+                  {crossValidationResult.llm_observacoes}
+                </Text>
+              </View>
+            )}
+
+            {!isHealthy && !isPhyto && crossValidationState === 'UNAVAILABLE' && (
+              <View style={styles.crossValidationUnavailable}>
+                <Ionicons name="cloud-offline-outline" size={18} color={theme.colors.textSecondary} />
+                <Text style={styles.crossValidationUnavailableText}>
+                  Segunda opinião indisponível. O diagnóstico local continua válido e acessível.
+                </Text>
+              </View>
+            )}
+
             {/* Case 1: Healthy */}
             {isHealthy && (
               <View style={styles.specialResultBox}>
@@ -553,8 +778,8 @@ export default function CameraScreen() {
                         if (item.bula_resumida && item.bula_resumida.startsWith('{')) {
                           parsedBula = JSON.parse(item.bula_resumida);
                         }
-                      } catch (e) {
-                        console.error('Failed to parse bula_resumida JSON:', e);
+                      } catch {
+                        console.error('Failed to parse bula_resumida JSON.');
                       }
 
                       return (
@@ -640,6 +865,104 @@ export default function CameraScreen() {
               </View>
             )}
 
+            <View style={styles.feedbackSection}>
+              <Text style={styles.sectionTitle}>Este diagnóstico parece correto?</Text>
+              {feedbackSubmitted ? (
+                <View style={styles.feedbackSuccess}>
+                  <Ionicons name="checkmark-circle" size={20} color={theme.colors.primary} />
+                  <Text style={styles.feedbackSuccessText}>Feedback salvo para sincronização.</Text>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.feedbackButtons}>
+                    <TouchableOpacity
+                      style={[styles.feedbackButton, feedbackChoice === 'CORRECT' && styles.feedbackButtonSelected]}
+                      onPress={() => {
+                        setFeedbackChoice('CORRECT');
+                        setCorrectedDiseaseId(null);
+                      }}
+                    >
+                      <Text style={styles.feedbackButtonText}>
+                        {crossValidationResult?.result_status === 'DIVERGENT'
+                          ? `É ${diseaseDetails?.nome_comum ?? 'a opinião local'}`
+                          : 'Diagnóstico correto'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {crossValidationResult?.result_status === 'DIVERGENT' ? (
+                      <TouchableOpacity
+                        style={[styles.feedbackButton, feedbackChoice === 'LLM' && styles.feedbackButtonSelected]}
+                        onPress={() => {
+                          setFeedbackChoice('LLM');
+                          setCorrectedDiseaseId(crossValidationResult.llm_doenca_id);
+                        }}
+                      >
+                        <Text style={styles.feedbackButtonText}>
+                          É {crossValidationResult.llm_doenca_nome ?? 'a opinião do Agrônomo IA'}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={[styles.feedbackButton, feedbackChoice === 'INCORRECT' && styles.feedbackButtonSelected]}
+                        onPress={() => {
+                          setFeedbackChoice('INCORRECT');
+                          setCorrectedDiseaseId(null);
+                        }}
+                      >
+                        <Text style={styles.feedbackButtonText}>Incorreto</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    <TouchableOpacity
+                      style={[styles.feedbackButton, feedbackChoice === 'OTHER' && styles.feedbackButtonSelected]}
+                      onPress={() => setFeedbackChoice('OTHER')}
+                    >
+                      <Text style={styles.feedbackButtonText}>Parece ser outra doença</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {feedbackChoice === 'OTHER' && (
+                    <View style={styles.diseasePicker}>
+                      <Text style={styles.feedbackLabel}>Selecione a correção:</Text>
+                      {feedbackDiseases.map((disease) => (
+                        <TouchableOpacity
+                          key={disease.id}
+                          style={[
+                            styles.diseaseOption,
+                            correctedDiseaseId === disease.id && styles.diseaseOptionSelected,
+                          ]}
+                          onPress={() => setCorrectedDiseaseId(disease.id)}
+                        >
+                          <Text style={styles.diseaseOptionText}>{disease.nome_comum}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+
+                  {feedbackChoice && (
+                    <>
+                      <TextInput
+                        style={styles.feedbackNotesInput}
+                        value={feedbackNotes}
+                        onChangeText={setFeedbackNotes}
+                        placeholder="Observações (opcional)"
+                        placeholderTextColor={theme.colors.textSecondary}
+                        multiline
+                      />
+                      <Button
+                        title="Enviar feedback"
+                        onPress={handleSubmitFeedback}
+                        loading={isSubmittingFeedback}
+                        disabled={!diagnosticLocalId}
+                        variant="secondary"
+                        style={styles.feedbackSubmitButton}
+                      />
+                    </>
+                  )}
+                </>
+              )}
+            </View>
+
             {/* Geolocation metadata */}
             <View style={styles.locationMetadata}>
               <Ionicons name="pin" size={12} color={theme.colors.textSecondary} />
@@ -652,9 +975,10 @@ export default function CameraScreen() {
           {/* Fixed Actions Footer outside of scroll per spec */}
           <View style={styles.sheetButtonsContainer}>
             <Button
-              title="Tirar Dúvidas com Agrônomo Virtual"
+              title="Conversar com o Agrônomo"
               onPress={handleGoToChat}
               variant="primary"
+              disabled={!diagnosticLocalId}
               style={styles.actionBtnPrimary}
               icon={<Ionicons name="chatbubbles-outline" size={20} color="#FFFFFF" />}
               iconPosition="right"
@@ -662,6 +986,7 @@ export default function CameraScreen() {
             <TouchableOpacity
               style={styles.actionBtnSecondary}
               onPress={handleSaveToHistory}
+              disabled={!diagnosticLocalId}
               activeOpacity={0.7}
               accessibilityLabel="Salvar no Histórico"
             >
@@ -849,22 +1174,23 @@ export default function CameraScreen() {
 
       {/* Fixed Navigation Tab Bar */}
       <View style={styles.bottomTabBar}>
-        <TouchableOpacity style={styles.bottomTabItemActive} activeOpacity={1}>
+        <TouchableOpacity
+          style={styles.bottomTabItemActive}
+          activeOpacity={1}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: true }}
+          accessibilityLabel="Câmera, aba atual"
+        >
           <Ionicons name="camera" size={24} color={theme.colors.primary} />
           <Text style={styles.bottomTabLabelActive}>Câmera</Text>
         </TouchableOpacity>
 
         <TouchableOpacity 
           style={styles.bottomTabItem} 
-          onPress={() => {
-            router.replace('/');
-            Toast.show({
-              type: 'info',
-              text1: 'Chat Indisponível',
-              text2: 'O Chat é implementado na Sprint 4.',
-            });
-          }}
+          onPress={() => router.push('/chat')}
           activeOpacity={0.7}
+          accessibilityRole="tab"
+          accessibilityLabel="Abrir chat com agrônomo"
         >
           <Ionicons name="chatbubbles-outline" size={24} color={theme.colors.textSecondary} />
           <Text style={styles.bottomTabLabel}>Chat</Text>
@@ -874,6 +1200,8 @@ export default function CameraScreen() {
           style={styles.bottomTabItem} 
           onPress={() => router.replace('/')}
           activeOpacity={0.7}
+          accessibilityRole="tab"
+          accessibilityLabel="Abrir catálogo"
         >
           <Ionicons name="book-outline" size={24} color={theme.colors.textSecondary} />
           <Text style={styles.bottomTabLabel}>Catálogo</Text>
@@ -1411,6 +1739,148 @@ const styles = StyleSheet.create({
     color: theme.colors.error,
     fontWeight: 'bold',
     lineHeight: 16,
+  },
+  crossValidationLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.primaryLight10,
+    marginBottom: theme.spacing.md,
+  },
+  crossValidationLoadingText: {
+    marginLeft: theme.spacing.sm,
+    color: theme.colors.primaryDark,
+    fontWeight: '600',
+  },
+  crossValidationCard: {
+    borderWidth: 1.5,
+    borderColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.primaryLight10,
+    marginBottom: theme.spacing.md,
+  },
+  crossValidationDivergent: {
+    borderColor: theme.colors.warning,
+    backgroundColor: 'rgba(245, 124, 0, 0.08)',
+  },
+  crossValidationTitle: {
+    marginLeft: theme.spacing.sm,
+    color: theme.colors.text,
+    fontSize: theme.typography.fontSize.md,
+    fontWeight: 'bold',
+  },
+  divergentOpinions: {
+    gap: 8,
+    marginBottom: theme.spacing.sm,
+  },
+  opinionText: {
+    color: theme.colors.text,
+    fontSize: theme.typography.fontSize.sm,
+    lineHeight: 20,
+  },
+  divergenceWarning: {
+    color: theme.colors.warning,
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: 'bold',
+    lineHeight: 20,
+  },
+  crossValidationObservations: {
+    color: theme.colors.textSecondary,
+    fontSize: theme.typography.fontSize.sm,
+    lineHeight: 21,
+  },
+  crossValidationUnavailable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginBottom: theme.spacing.md,
+  },
+  crossValidationUnavailableText: {
+    flex: 1,
+    marginLeft: theme.spacing.sm,
+    color: theme.colors.textSecondary,
+    fontSize: theme.typography.fontSize.sm,
+  },
+  feedbackSection: {
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    paddingTop: theme.spacing.lg,
+    marginTop: theme.spacing.sm,
+    marginBottom: theme.spacing.lg,
+  },
+  feedbackButtons: {
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.md,
+  },
+  feedbackButton: {
+    borderWidth: 1,
+    borderColor: theme.colors.borderOutline,
+    borderRadius: theme.borderRadius.md,
+    paddingVertical: 12,
+    paddingHorizontal: theme.spacing.md,
+  },
+  feedbackButtonSelected: {
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primaryLight10,
+  },
+  feedbackButtonText: {
+    color: theme.colors.text,
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  diseasePicker: {
+    marginTop: theme.spacing.md,
+    gap: 6,
+  },
+  feedbackLabel: {
+    color: theme.colors.textSecondary,
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  diseaseOption: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.sm,
+    padding: 10,
+  },
+  diseaseOptionSelected: {
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primaryLight10,
+  },
+  diseaseOptionText: {
+    color: theme.colors.text,
+    fontSize: theme.typography.fontSize.sm,
+  },
+  feedbackNotesInput: {
+    minHeight: 88,
+    borderWidth: 1,
+    borderColor: theme.colors.borderOutline,
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing.md,
+    marginTop: theme.spacing.md,
+    color: theme.colors.text,
+    backgroundColor: theme.colors.surface,
+    textAlignVertical: 'top',
+  },
+  feedbackSubmitButton: {
+    marginTop: theme.spacing.md,
+  },
+  feedbackSuccess: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: theme.spacing.md,
+  },
+  feedbackSuccessText: {
+    marginLeft: theme.spacing.sm,
+    color: theme.colors.primaryDark,
+    fontWeight: '600',
   },
   locationMetadata: {
     flexDirection: 'row',

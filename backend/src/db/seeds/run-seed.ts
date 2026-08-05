@@ -61,8 +61,8 @@ async function seed() {
       .onConflictDoNothing({ target: [doencaDefensivo.idDoenca, doencaDefensivo.idDefensivo] });
 
     console.log('✅ Seed completed successfully!');
-  } catch (error) {
-    console.error('❌ Error during seed:', error);
+  } catch {
+    console.error('❌ Error during seed.');
   } finally {
     await pool.end();
   }

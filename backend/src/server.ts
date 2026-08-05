@@ -6,7 +6,10 @@ const start = async () => {
     await app.listen({ port: parseInt(env.PORT), host: '0.0.0.0' });
     app.log.info(`Server is running on port ${env.PORT}`);
   } catch (err) {
-    app.log.error(err);
+    app.log.error(
+      { errorName: err instanceof Error ? err.name : 'UnknownError' },
+      'Server startup failed'
+    );
     process.exit(1);
   }
 };

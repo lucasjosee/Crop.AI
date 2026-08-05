@@ -1,13 +1,13 @@
 // frontend/lib/slmChatService.ts
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 
 // Path where the .gguf file must exist on the device.
 // Dev: copy manually to documentDirectory/models/
 // Prod: Play Asset Delivery (Android) / On-Demand Resources (iOS)
 export const SLM_MODEL_FILENAME = 'gemma-2b-it-q4_k_m.gguf';
-export const SLM_MODEL_PATH = `${FileSystem.documentDirectory ?? ''}models/${SLM_MODEL_FILENAME}`;
+export const SLM_MODEL_PATH = new File(Paths.document, 'models', SLM_MODEL_FILENAME).uri;
 
-export const SLM_SYSTEM_PROMPT = `Você é um Agrônomo Virtual especializado em soja e milho.
+export const SLM_SYSTEM_PROMPT = `Você é um Agrônomo Virtual especializado em soja.
 Responda de forma clara e objetiva usando APENAS as informações do contexto fornecido.
 Se não encontrar informação no contexto, diga que não tem essa informação disponível offline.
 Seja conciso — máximo 3 parágrafos.
@@ -29,10 +29,10 @@ export async function loadSlmModel(
   }
 
   try {
-    const info = await FileSystem.getInfoAsync(SLM_MODEL_PATH);
-    if (!info.exists) {
+    const modelFile = new File(SLM_MODEL_PATH);
+    if (!modelFile.exists) {
       console.warn(`[SLM] Model not found at: ${SLM_MODEL_PATH}`);
-      console.warn(`[SLM] Copy the .gguf file to: ${FileSystem.documentDirectory ?? ''}models/`);
+      console.warn(`[SLM] Copy the .gguf file to: ${new File(Paths.document, 'models', SLM_MODEL_FILENAME).parentDirectory.uri}`);
       return false;
     }
 
@@ -42,8 +42,9 @@ export async function loadSlmModel(
     llamaContext = await initLlama(
       {
         model: SLM_MODEL_PATH,
-        use_mlock: true,
+        use_mlock: false,
         n_ctx: 2048,
+        n_batch: 256,
         n_threads: 4,
         n_gpu_layers: 0,
       },
@@ -54,8 +55,8 @@ export async function loadSlmModel(
 
     onProgress({ progress: 1, loaded: true });
     return true;
-  } catch (err) {
-    console.error('[SLM] Failed to initialize model:', err);
+  } catch {
+    console.error('[SLM] Failed to initialize model.');
     llamaContext = null;
     return false;
   }
@@ -65,8 +66,8 @@ export async function unloadSlmModel(): Promise<void> {
   if (llamaContext) {
     try {
       await llamaContext.release();
-    } catch (err) {
-      console.warn('[SLM] Error releasing model:', err);
+    } catch {
+      console.warn('[SLM] Error releasing model.');
     }
     llamaContext = null;
   }
@@ -101,6 +102,7 @@ export async function slmChat(options: SlmChatOptions): Promise<{ aborted: boole
 
   const abortHandler = () => {
     aborted = true;
+    void llamaContext?.stopCompletion?.();
   };
   signal?.addEventListener('abort', abortHandler);
 

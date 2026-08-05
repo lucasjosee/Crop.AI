@@ -13,6 +13,11 @@ export interface LLMMessage {
   content: string;
 }
 
+export interface LLMImageInput {
+  dataBase64: string;
+  mimeType: 'image/jpeg' | 'image/png';
+}
+
 export interface LLMProvider {
   stream(
     systemPrompt: string,
@@ -20,6 +25,11 @@ export interface LLMProvider {
     userMessage: string,
     callbacks: StreamCallbacks
   ): Promise<void>;
+  analyzeImage(
+    systemPrompt: string,
+    userPrompt: string,
+    image: LLMImageInput
+  ): Promise<string>;
 }
 
 export function createLLMProvider(): LLMProvider {

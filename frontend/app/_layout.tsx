@@ -7,6 +7,9 @@ import { useNetworkStore } from '../store/useNetworkStore';
 import { useSyncStore } from '../store/useSyncStore';
 import { initDatabase } from '../db/sqlite';
 import { theme } from '../config/theme';
+import { Button } from '../components/Button';
+
+const APP_BOOT_STARTED_AT = Date.now();
 
 export default function RootLayout() {
   const router = useRouter();
@@ -15,11 +18,15 @@ export default function RootLayout() {
   const { isAuthenticated, isLoading, loadStoredSession } = useAuthStore();
   const { initNetworkSensing } = useNetworkStore();
   const [dbReady, setDbReady] = useState(false);
+  const [bootError, setBootError] = useState(false);
+  const [bootAttempt, setBootAttempt] = useState(0);
 
   // 1. Inicialização do Banco de Dados, Sessões e Sensores no Boot
   useEffect(() => {
     async function setupApp() {
       try {
+        setBootError(false);
+        setDbReady(false);
         console.log('[RootLayout] Booting up App...');
         // Inicializar Banco de dados local (com fallback de web e seed)
         await initDatabase();
@@ -30,14 +37,15 @@ export default function RootLayout() {
 
         // Inicializar Monitoramento de Sinal (Network Sensing)
         initNetworkSensing();
+        console.info(`[Performance] App ready in ${Date.now() - APP_BOOT_STARTED_AT}ms.`);
       } catch (err) {
-        console.error('[RootLayout] Failed to boot app:', err);
-        setDbReady(true); // Evita trava eterna da interface
+        console.error('[RootLayout] App boot failed.');
+        setBootError(true);
       }
     }
     
     setupApp();
-  }, []);
+  }, [bootAttempt]);
 
   // 1b. Auto-sync Store & Forward na transição para ONLINE (volta para a sede)
   useEffect(() => {
@@ -80,6 +88,23 @@ export default function RootLayout() {
   }, [isAuthenticated, isLoading, dbReady, segments]);
 
   // Se carregando configurações iniciais, exibe loader premium Dark
+  if (bootError) {
+    return (
+      <View style={styles.loadingContainer} accessibilityRole="alert">
+        <Text style={styles.bootErrorTitle}>Não foi possível iniciar com segurança</Text>
+        <Text style={styles.bootErrorText}>
+          Verifique o armazenamento do aparelho e tente novamente. Seus dados não foram substituídos.
+        </Text>
+        <Button
+          title="Tentar novamente"
+          onPress={() => setBootAttempt((attempt) => attempt + 1)}
+          accessibilityHint="Tenta abrir novamente o banco local criptografado"
+          style={styles.retryButton}
+        />
+      </View>
+    );
+  }
+
   if (isLoading || !dbReady) {
     return (
       <View style={styles.loadingContainer}>
@@ -95,6 +120,7 @@ export default function RootLayout() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: theme.colors.background },
+          animation: 'fade',
         }}
       >
         <Stack.Screen name="index" />
@@ -126,5 +152,24 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.sm,
     fontWeight: 'bold',
     marginTop: theme.spacing.md,
+  },
+  bootErrorTitle: {
+    color: theme.colors.error,
+    fontSize: theme.typography.fontSize.xl,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    paddingHorizontal: theme.spacing.lg,
+  },
+  bootErrorText: {
+    color: theme.colors.textSecondary,
+    fontSize: theme.typography.fontSize.md,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginTop: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.lg,
+  },
+  retryButton: {
+    marginTop: theme.spacing.lg,
+    minWidth: 220,
   },
 });
