@@ -152,6 +152,49 @@ Investigados e descartados com evidência:
 
 ---
 
+---
+
+## Status de resolução — 09/09/2026
+
+Todos os 20 achados foram corrigidos na branch `fix/review-findings`, em quatro
+commits, com teste que falha antes da correção para cada um.
+
+| Commit | Achados |
+|---|---|
+| `3d1af31` fix(sync) | P1.1, P1.3, P2.3, P2.4, P2.5, P2.6 |
+| `5d689ba` fix(backend) | P1.2, P3.3, P3.8 |
+| `64d0e9a` fix(diagnosis) | P1.4, P2.2, P3.1, P3.2, P3.6, P3.7, P3.9, P3.10 |
+| `a3cfba7` fix(frontend) | P2.1, P3.4, P3.5 |
+
+Testes: backend 46 → 65, frontend 49 → 54. Typecheck e build limpos nos dois.
+
+### Decisões que foram além da correção pontual
+
+- **`doenca_id` e coordenadas viraram nullable** no Postgres. Descartar
+  diagnósticos especiais jogaria fora dado real de campo, que é o que o RF05
+  existe para preservar; e (0,0) é um ponto real no Golfo da Guiné.
+- **Lote de sync ficou resiliente por item.** Corrigir só o nulo deixaria a
+  fila igualmente frágil a qualquer incompatibilidade futura.
+- **Nova coluna `llm_doenca_nome`**, para não perder o que o LLM afirmou quando
+  a doença está fora do catálogo — a RF08 proíbe ocultar divergência.
+- **Rate limit desligável por `RATE_LIMIT_ENABLED`**, ligado por padrão.
+- **`lib/diagnosticDraftService.ts` extraído** de `camera.tsx`, que não tem
+  cobertura de teste.
+
+### Bug latente descoberto durante a correção
+
+O `errorResponseBuilder` do rate limit devolvia um objeto sem `statusCode`,
+então exceder o limite virava **500 genérico em vez de 429**. Ficou invisível
+enquanto os limites nunca disparavam (P1.2).
+
+### Fora do escopo destes commits
+
+- **CI do frontend quebrado** (`build:web`): `react-native-vision-camera@5.0.11`
+  publica import sem extensão (`./VisionCamera`), inválido em ESM, e o
+  `expo export --platform web` carrega isso pelo loader ESM do Node 22. Passa
+  localmente no Node 26. Não estava entre os achados e não foi tocado.
+- Varredura de `frontend/lib`, `frontend/db` e `frontend/app` no código antigo.
+
 ## Cobertura
 
 | Área | Status |
