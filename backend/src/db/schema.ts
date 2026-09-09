@@ -158,8 +158,11 @@ export const diagnosticos = pgTable(
       .notNull(),
     mobileLocalId: uuid('mobile_local_id').unique().notNull(),
     imageS3Key: text('image_s3_key').notNull(),
-    latitude: doublePrecision('latitude').notNull(),
-    longitude: doublePrecision('longitude').notNull(),
+    // Nulas quando a cross-validation cria a linha antes do sync chegar: (0,0)
+    // é uma coordenada real no Golfo da Guiné e ficava indistinguível de leitura
+    // legítima se o sync nunca chegasse. O sync preenche quando chega.
+    latitude: doublePrecision('latitude'),
+    longitude: doublePrecision('longitude'),
     // Nulo para diagnósticos especiais (Saudável, Fitotoxicidade): são resultados
     // legítimos do CV que não correspondem a nenhuma doença do catálogo.
     doencaId: uuid('doenca_id').references(() => doencas.id),
@@ -167,6 +170,9 @@ export const diagnosticos = pgTable(
     modeloUsado: varchar('modelo_usado', { length: 100 }).notNull(),
     tempoInferenciaMs: integer('tempo_inferencia_ms').notNull(),
     llmDoencaId: uuid('llm_doenca_id').references(() => doencas.id),
+    // Preserva o que o LLM afirmou mesmo quando a doença não está no catálogo;
+    // sem isso a repetição idempotente devolvia null e escondia a divergência.
+    llmDoencaNome: varchar('llm_doenca_nome', { length: 255 }),
     llmConfianca: doublePrecision('llm_confianca'),
     llmObservacoes: text('llm_observacoes'),
     crossValidationStatus: cvStatusEnum('cross_validation_status')

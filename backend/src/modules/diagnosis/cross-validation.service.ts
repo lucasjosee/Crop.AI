@@ -23,15 +23,37 @@ export interface DiagnosticImageLoader {
   load(s3Key: string): Promise<LLMImageInput>;
 }
 
+/**
+ * Teto de 10MB, o mesmo que o app valida antes de enviar. O presigned PUT não
+ * consegue impor `content-length-range` (é recurso da forma POST), então o
+ * tamanho do objeto é controlado pelo cliente: sem este teto, bufferizar o
+ * objeto inteiro e ainda gerar um base64 ~33% maior derruba o processo.
+ */
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
 class S3DiagnosticImageLoader implements DiagnosticImageLoader {
   async load(s3Key: string): Promise<LLMImageInput> {
     try {
       const response = await s3Client.send(
         new GetObjectCommand({ Bucket: env.S3_BUCKET, Key: s3Key })
       );
+      if (typeof response.ContentLength === 'number' && response.ContentLength > MAX_IMAGE_BYTES) {
+        throw new AppError(
+          413,
+          'IMAGE_TOO_LARGE',
+          'A imagem excede o limite de 10MB para a segunda opinião.'
+        );
+      }
       const body = response.Body as { transformToByteArray?: () => Promise<Uint8Array> } | undefined;
       if (!body?.transformToByteArray) throw new Error('S3 retornou uma imagem sem conteúdo.');
       const bytes = await body.transformToByteArray();
+      if (bytes.byteLength > MAX_IMAGE_BYTES) {
+        throw new AppError(
+          413,
+          'IMAGE_TOO_LARGE',
+          'A imagem excede o limite de 10MB para a segunda opinião.'
+        );
+      }
       const mimeType = response.ContentType === 'image/png' ? 'image/png' : 'image/jpeg';
       return { dataBase64: Buffer.from(bytes).toString('base64'), mimeType };
     } catch (error: any) {
@@ -44,11 +66,61 @@ class S3DiagnosticImageLoader implements DiagnosticImageLoader {
   }
 }
 
+/**
+ * A varredura primeiro-`{` / último-`}` quebrava sempre que o modelo escrevia
+ * qualquer coisa com chave depois do JSON — o que é rotineiro no Claude, que só
+ * é instruído em prosa a responder JSON, enquanto o Gemini força
+ * `responseMimeType: application/json`. Um veredito válido virava 502 e a
+ * inferência paga era descartada.
+ */
 function extractJson(text: string): unknown {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start < 0 || end < start) throw new Error('Resposta do provedor não contém JSON.');
-  return JSON.parse(text.slice(start, end + 1));
+  const trimmed = text.trim();
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // Segue para as estratégias de extração.
+  }
+
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced) {
+    try {
+      return JSON.parse(fenced[1]);
+    } catch {
+      // Segue para a varredura balanceada.
+    }
+  }
+
+  // Varredura contando chaves e ignorando o que está dentro de string, para
+  // fechar no objeto correto em vez de no último `}` do texto inteiro.
+  const start = trimmed.indexOf('{');
+  if (start < 0) throw new Error('Resposta do provedor não contém JSON.');
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < trimmed.length; i++) {
+    const char = trimmed[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === '{') depth++;
+    else if (char === '}' && --depth === 0) {
+      return JSON.parse(trimmed.slice(start, i + 1));
+    }
+  }
+
+  throw new Error('Resposta do provedor não contém um JSON completo.');
 }
 
 function toResponse(record: PersistedDiagnostic, llmDiseaseName: string | null = null) {
@@ -94,7 +166,10 @@ export class CrossValidationService {
       const llmDisease = diagnostic.llmDoencaId
         ? await this.repository.findDisease(diagnostic.llmDoencaId)
         : undefined;
-      return toResponse(diagnostic, llmDisease?.nome ?? null);
+      // O nome persistido preserva o que o LLM afirmou mesmo quando a doença
+      // não está no catálogo — sem isso a repetição devolvia null onde a
+      // primeira chamada devolvera a string do modelo, escondendo a divergência.
+      return toResponse(diagnostic, llmDisease?.nome ?? diagnostic.llmDoencaNome ?? null);
     }
     diagnostic ??= await this.repository.createPending(userId, input);
 
@@ -110,9 +185,15 @@ export class CrossValidationService {
         this.provider.analyzeImage(CROSS_VALIDATION_SYSTEM_PROMPT, prompt, image)
       );
     } catch (error: any) {
+      // Sem sair de PENDING, o cliente offline-first re-tenta indefinidamente e
+      // cada ciclo custa um GetObject no S3 mais uma inferência de visão paga.
+      // SKIPPED é o mesmo estado que o app já usa quando a segunda opinião
+      // falha, e mantém o diagnóstico local válido.
+      await this.repository.markSkipped(diagnostic.id);
       if (error?.message === 'LLM_TIMEOUT') {
         throw new AppError(504, 'LLM_TIMEOUT', 'A segunda opinião excedeu o limite de 15 segundos.');
       }
+      if (error instanceof AppError) throw error;
       throw new AppError(502, 'LLM_UNAVAILABLE', 'O serviço de segunda opinião está indisponível.');
     }
 
@@ -120,6 +201,7 @@ export class CrossValidationService {
     try {
       result = llmCrossValidationSchema.parse(extractJson(rawResponse));
     } catch {
+      await this.repository.markSkipped(diagnostic.id);
       throw new AppError(502, 'LLM_UNAVAILABLE', 'O provedor retornou uma resposta inválida.');
     }
 

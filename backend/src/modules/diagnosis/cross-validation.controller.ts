@@ -1,22 +1,14 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { crossValidationInputSchema } from './cross-validation.schema';
 import { crossValidationService } from './cross-validation.service';
-import { ValidationError } from '../../shared/errors';
 
 export const crossValidationController = {
   async crossValidate(request: FastifyRequest, reply: FastifyReply) {
-    const parsed = crossValidationInputSchema.safeParse(request.body);
-    if (!parsed.success) {
-      throw new ValidationError(
-        'Falha na validação dos campos.',
-        parsed.error.issues.map((issue) => ({
-          path: issue.path.join('.'),
-          message: issue.message,
-        }))
-      );
-    }
+    // O setErrorHandler de app.ts já converte ZodError em 400/VALIDATION_ERROR
+    // com o mesmo formato de details — é o padrão dos outros cinco controllers.
+    const input = crossValidationInputSchema.parse(request.body);
     const user = request.user as { sub: string };
-    const result = await crossValidationService.crossValidate(user.sub, parsed.data);
+    const result = await crossValidationService.crossValidate(user.sub, input);
     return reply.code(200).send(result);
   },
 };
