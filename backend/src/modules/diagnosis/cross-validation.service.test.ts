@@ -68,6 +68,7 @@ describe('CrossValidationService', () => {
       ]),
       createPending: vi.fn(async () => diagnostic()),
       saveResult: vi.fn(async () => {}),
+      markSkipped: vi.fn(async () => {}),
     };
     imageLoader = {
       load: vi.fn(async (): Promise<LLMImageInput> => ({
@@ -75,6 +76,76 @@ describe('CrossValidationService', () => {
         mimeType: 'image/jpeg',
       })),
     };
+  });
+
+  // P2.2 — toda falha retornava antes do saveResult, deixando PENDING, que não é
+  // terminal. O cliente offline-first re-tenta, e cada ciclo custa um GetObject
+  // no S3 mais uma inferência de visão paga, sem teto.
+  it('marca SKIPPED quando o provedor estoura o tempo, para não re-cobrar em retry', async () => {
+    provider.analyzeImage.mockImplementation(() => new Promise(() => {}));
+    const service = new CrossValidationService(provider, repository, imageLoader, 10);
+
+    await expect(service.crossValidate('user-1', input)).rejects.toMatchObject({ code: 'LLM_TIMEOUT' });
+    expect(repository.markSkipped).toHaveBeenCalledWith(diagnostic().id);
+  });
+
+  it('marca SKIPPED quando o provedor devolve resposta ilegível', async () => {
+    provider.analyzeImage.mockResolvedValue('isso nao e json');
+    const service = new CrossValidationService(provider, repository, imageLoader);
+
+    await expect(service.crossValidate('user-1', input)).rejects.toMatchObject({ code: 'LLM_UNAVAILABLE' });
+    expect(repository.markSkipped).toHaveBeenCalledWith(diagnostic().id);
+  });
+
+  // P3.1 — a varredura primeiro-{ / último-} engolia qualquer chave em prosa
+  // após o JSON. Atinge o Claude, que só é instruído em texto a responder JSON,
+  // enquanto o Gemini força responseMimeType: application/json.
+  it('aceita JSON em bloco cercado seguido de comentário do modelo', async () => {
+    provider.analyzeImage.mockResolvedValue(
+      '```json\n{"result_status":"CONFIRMED","llm_doenca_id":null,"llm_doenca_nome":null,' +
+        '"llm_observacoes":"Confirmado.","llm_confianca":0.9}\n```\n\n' +
+        'Obs: aplicar {dose} conforme a bula.'
+    );
+    const service = new CrossValidationService(provider, repository, imageLoader);
+
+    const response = await service.crossValidate('user-1', input);
+
+    expect(response.cross_validation.result_status).toBe('CONFIRMED');
+  });
+
+  // P3.6 — o nome não era persistido, então o retry idempotente devolvia null
+  // onde a primeira chamada devolvera a string do LLM.
+  it('devolve o mesmo llm_doenca_nome na repetição de um DIVERGENT fora do catálogo', async () => {
+    provider.analyzeImage.mockResolvedValue(JSON.stringify({
+      result_status: 'DIVERGENT',
+      llm_doenca_id: null,
+      llm_doenca_nome: 'Oidio Fora do Catalogo',
+      llm_observacoes: 'Sintoma incompatível com o catálogo.',
+      llm_confianca: 0.8,
+    }));
+    const service = new CrossValidationService(provider, repository, imageLoader);
+
+    const primeira = await service.crossValidate('user-1', input);
+    const persistido = (repository.saveResult as ReturnType<typeof vi.fn>).mock.calls[0][1];
+
+    repository.findDiagnostic = vi.fn(async () =>
+      diagnostic({
+        crossValidationStatus: 'DIVERGENT',
+        llmDoencaId: null,
+        llmDoencaNome: persistido.llm_doenca_nome,
+        llmObservacoes: 'Sintoma incompatível com o catálogo.',
+        llmConfianca: 0.8,
+      })
+    );
+    const repetida = await new CrossValidationService(
+      provider,
+      repository,
+      imageLoader
+    ).crossValidate('user-1', input);
+
+    expect(repetida.cross_validation.llm_doenca_nome).toBe(
+      primeira.cross_validation.llm_doenca_nome
+    );
   });
 
   it.each([

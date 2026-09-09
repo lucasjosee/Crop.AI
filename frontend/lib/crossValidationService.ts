@@ -48,6 +48,12 @@ export async function crossValidateDiagnostic(
   });
   input.onImageUploaded?.(imageS3Key);
 
+  // Só a chamada de rede fica no try: envolver também o UPDATE local fazia uma
+  // falha de banco (ex.: FK de llm_doenca_id com catálogo desatualizado) virar
+  // LLM_UNAVAILABLE. O app então marcava SKIPPED, o guard do servidor impedia a
+  // auto-correção no sync seguinte, e cliente e servidor divergiam para sempre
+  // — com a segunda opinião real existindo no servidor e nunca aparecendo.
+  let result: CrossValidationResult;
   try {
     const { data } = await api.post(
       '/api/v1/diagnosis/cross-validate',
@@ -64,28 +70,28 @@ export async function crossValidateDiagnostic(
       },
       { timeout: 17_000 }
     );
-
-    const result = data.cross_validation as CrossValidationResult;
-    await dbDriver.execute(
-      `UPDATE fila_diagnosticos
-       SET cross_validation_status = ?, llm_doenca_id = ?, llm_doenca_nome = ?,
-           llm_confianca = ?, llm_observacoes = ?, cross_validation_error_code = ?
-       WHERE local_id = ?;`,
-      [
-        result.result_status,
-        result.llm_doenca_id,
-        result.llm_doenca_nome,
-        result.llm_confianca,
-        result.llm_observacoes,
-        null,
-        input.localId,
-      ]
-    );
-    return { imageS3Key, result };
+    result = data.cross_validation as CrossValidationResult;
   } catch (error: any) {
     const code = error?.response?.data?.error?.code ?? 'LLM_UNAVAILABLE';
     throw new CrossValidationRequestError(code);
   }
+
+  await dbDriver.execute(
+    `UPDATE fila_diagnosticos
+     SET cross_validation_status = ?, llm_doenca_id = ?, llm_doenca_nome = ?,
+         llm_confianca = ?, llm_observacoes = ?, cross_validation_error_code = ?
+     WHERE local_id = ?;`,
+    [
+      result.result_status,
+      result.llm_doenca_id,
+      result.llm_doenca_nome,
+      result.llm_confianca,
+      result.llm_observacoes,
+      null,
+      input.localId,
+    ]
+  );
+  return { imageS3Key, result };
 }
 
 export async function markCrossValidationSkipped(

@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { diagnosticos, doencas } from '../../db/schema';
 import type { CrossValidationInput, LlmCrossValidation } from './cross-validation.schema';
+import { ConflictError } from '../../shared/errors';
 
 export type PersistedDiagnostic = typeof diagnosticos.$inferSelect;
 
@@ -19,6 +20,7 @@ export interface CrossValidationRepository {
     diagnosticId: string,
     result: LlmCrossValidation & { llm_doenca_id: string | null }
   ): Promise<void>;
+  markSkipped(diagnosticId: string): Promise<void>;
 }
 
 export class DrizzleCrossValidationRepository implements CrossValidationRepository {
@@ -53,8 +55,9 @@ export class DrizzleCrossValidationRepository implements CrossValidationReposito
         userId,
         mobileLocalId: input.diagnostic_local_id,
         imageS3Key: input.image_s3_key,
-        latitude: 0,
-        longitude: 0,
+        // Desconhecidas neste ponto; o sync preenche quando o lote offline chega.
+        latitude: null,
+        longitude: null,
         doencaId: input.cv_result.doenca_id,
         confiancaIa: input.cv_result.confianca,
         modeloUsado: input.cv_result.modelo_usado,
@@ -62,8 +65,27 @@ export class DrizzleCrossValidationRepository implements CrossValidationReposito
         crossValidationStatus: 'PENDING',
         capturedAt: new Date(),
       })
+      .onConflictDoNothing({ target: diagnosticos.mobileLocalId })
       .returning();
-    return created;
+
+    // mobile_local_id é único globalmente, mas findDiagnostic filtra por
+    // (userId, mobileLocalId). Numa corrida — duplo toque, ou retry dentro da
+    // janela de 15s do LLM — os dois lookups erram e o segundo insert colide.
+    // Sem isso, o 23505 cru virava 500 no lugar do 200 idempotente prometido.
+    if (created) return created;
+
+    const existing = await this.findDiagnostic(userId, input.diagnostic_local_id);
+    if (!existing) {
+      throw new ConflictError('O diagnóstico já está registrado para outro usuário.');
+    }
+    return existing;
+  }
+
+  async markSkipped(diagnosticId: string) {
+    await db
+      .update(diagnosticos)
+      .set({ crossValidationStatus: 'SKIPPED' })
+      .where(eq(diagnosticos.id, diagnosticId));
   }
 
   async saveResult(
@@ -74,6 +96,7 @@ export class DrizzleCrossValidationRepository implements CrossValidationReposito
       .update(diagnosticos)
       .set({
         llmDoencaId: result.llm_doenca_id,
+        llmDoencaNome: result.llm_doenca_nome ?? null,
         llmConfianca: result.llm_confianca,
         llmObservacoes: result.llm_observacoes,
         crossValidationStatus: result.result_status,

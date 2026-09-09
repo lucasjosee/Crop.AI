@@ -10,6 +10,7 @@ import {
 const culturaId = `cultura-test-${randomUUID()}`;
 let doencaId: string;
 let accessToken: string;
+let userId: string;
 
 describe('POST /api/v1/sync/feedback (integration)', () => {
   beforeAll(async () => {
@@ -27,6 +28,8 @@ describe('POST /api/v1/sync/feedback (integration)', () => {
       payload: { email: 'sync-fb@test.com', password: 'senha123!' },
     });
     accessToken = JSON.parse(loginRes.body).access_token;
+    const [user] = await db.select().from(usuarios).where(eq(usuarios.email, 'sync-fb@test.com'));
+    userId = user.id;
 
     await db.insert(culturas).values({ id: culturaId, nome: 'Soja Teste FB', estagioFenologicoPadrao: [] });
     const [d] = await db
@@ -87,7 +90,7 @@ describe('POST /api/v1/sync/feedback (integration)', () => {
         diagnostics: [{
           local_id: localId,
           timestamp: '2026-06-10T08:30:00Z',
-          image_s3_key: `diagnosticos/test/${localId}.jpg`,
+          image_s3_key: `diagnosticos/${userId}/${localId}.jpg`,
           location: { lat: -23.5, lng: -46.6 },
           ai_result: { doenca_id: doencaId, confianca: 0.9, modelo_usado: 'tflite_v1.0', tempo_inferencia_ms: 40 },
         }],
@@ -113,7 +116,7 @@ describe('POST /api/v1/sync/feedback (integration)', () => {
         diagnostics: [{
           local_id: localId,
           timestamp: '2026-06-10T08:30:00Z',
-          image_s3_key: `diagnosticos/test/${localId}.jpg`,
+          image_s3_key: `diagnosticos/${userId}/${localId}.jpg`,
           location: { lat: -23.5, lng: -46.6 },
           ai_result: { doenca_id: doencaId, confianca: 0.9, modelo_usado: 'tflite_v1.0', tempo_inferencia_ms: 40 },
         }],

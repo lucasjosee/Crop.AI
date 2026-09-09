@@ -1,11 +1,14 @@
 import { FastifyInstance } from 'fastify';
 import { authController } from './auth.controller';
 import { authenticate } from '../../plugins/authenticate';
+import { RATE_LIMITS, routeRateLimit } from '../../config/rate-limit';
 
 export async function authRoutes(fastify: FastifyInstance) {
-  fastify.post('/register', authController.register);
-  fastify.post('/login', authController.login);
-  fastify.post('/refresh', authController.refresh);
-  fastify.post('/logout', { preHandler: [authenticate] }, authController.logout);
+  const config = routeRateLimit(RATE_LIMITS.auth);
+
+  fastify.post('/register', { config }, authController.register);
+  fastify.post('/login', { config }, authController.login);
+  fastify.post('/refresh', { config }, authController.refresh);
+  fastify.post('/logout', { config, preHandler: [authenticate] }, authController.logout);
 }
 export default authRoutes;

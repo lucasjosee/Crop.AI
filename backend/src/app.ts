@@ -12,20 +12,32 @@ import syncRoutes from './modules/sync/sync.routes';
 import catalogRoutes from './modules/catalog/catalog.routes';
 import crossValidationRoutes from './modules/diagnosis/cross-validation.routes';
 import { ALLOWED_ORIGINS } from './config/cors';
+import { rateLimitEnabled, rateLimitKeyGenerator } from './config/rate-limit';
 
 export const app = Fastify({
   logger: {
     level: env.NODE_ENV === 'development' ? 'debug' : 'info',
     transport: env.NODE_ENV === 'development' ? { target: 'pino-pretty' } : undefined,
     redact: {
+      // O wildcard `*` do pino casa exatamente um nível: '*.access_token'
+      // não cobre o segredo no topo nem o aninhado em dois níveis. Como não há
+      // wildcard recursivo, cada profundidade real precisa ser listada.
       paths: [
         'req.headers.authorization',
         'req.headers.cookie',
         'res.headers.set-cookie',
+        'access_token',
+        'refresh_token',
+        'password',
+        'apiKey',
         '*.access_token',
         '*.refresh_token',
         '*.password',
         '*.apiKey',
+        '*.*.access_token',
+        '*.*.refresh_token',
+        '*.*.password',
+        '*.*.apiKey',
       ],
       censor: '[REDACTED]',
     },
@@ -49,10 +61,14 @@ app.register(fastifyJwt, {
 // Register Rate Limiting
 app.register(fastifyRateLimit, {
   global: true,
-  max: 60,
+  max: () => (rateLimitEnabled() ? 60 : Number.MAX_SAFE_INTEGER),
   timeWindow: '1 minute',
+  keyGenerator: rateLimitKeyGenerator,
   errorResponseBuilder: (request, context) => {
+    // Sem `statusCode` aqui, o objeto lançado chega ao setErrorHandler sem
+    // status e cai no 500 genérico em vez de virar 429.
     return {
+      statusCode: 429,
       error: {
         code: 'RATE_LIMITED',
         message: 'Limite de requisições excedido.',
@@ -72,23 +88,11 @@ app.register(authenticatePlugin);
 // Register Auth Routes
 app.register(authRoutes, {
   prefix: '/api/v1/auth',
-  config: {
-    rateLimit: {
-      max: 10,
-      timeWindow: '1 minute',
-    },
-  },
 });
 
 // Register Chat Routes
 app.register(chatRoutes, {
   prefix: '/api/v1/chat',
-  config: {
-    rateLimit: {
-      max: 20,
-      timeWindow: '1 minute',
-    },
-  },
 });
 
 // Register Upload Routes
@@ -97,33 +101,15 @@ app.register(uploadRoutes, { prefix: '/api/v1/upload' });
 // Register Sync Routes
 app.register(syncRoutes, {
   prefix: '/api/v1/sync',
-  config: {
-    rateLimit: {
-      max: 30,
-      timeWindow: '1 minute',
-    },
-  },
 });
 
 // Register Catalog Routes
 app.register(catalogRoutes, {
   prefix: '/api/v1/catalog',
-  config: {
-    rateLimit: {
-      max: 60,
-      timeWindow: '1 minute',
-    },
-  },
 });
 
 app.register(crossValidationRoutes, {
   prefix: '/api/v1/diagnosis',
-  config: {
-    rateLimit: {
-      max: 20,
-      timeWindow: '1 minute',
-    },
-  },
 });
 
 // Health Check Route
@@ -186,8 +172,10 @@ app.setErrorHandler((error: FastifyError | AppError | Error, request, reply) => 
     });
   }
 
+  // Mensagem e stack são necessárias para localizar a falha; o bloco `redact`
+  // acima é quem protege os segredos, não a supressão do erro.
   request.log.error(
-    { errorName: error.name, errorCode: (error as { code?: string }).code },
+    { err: error, errorCode: (error as { code?: string }).code },
     'Unhandled request error'
   );
   return reply.status(500).send({

@@ -61,8 +61,13 @@ async function seed() {
       .onConflictDoNothing({ target: [doencaDefensivo.idDoenca, doencaDefensivo.idDefensivo] });
 
     console.log('✅ Seed completed successfully!');
-  } catch {
-    console.error('❌ Error during seed.');
+  } catch (error) {
+    // Descartar o erro e ainda sair com 0 fazia uma cadeia
+    // `db:migrate && db:seed && start` seguir adiante com o catálogo pela
+    // metade, e todo /sync/diagnostics depois falhava com INVALID_DOENCA_ID
+    // sem ninguém conseguir ligar a causa ao seed.
+    console.error('❌ Error during seed:', error);
+    process.exitCode = 1;
   } finally {
     await pool.end();
   }
