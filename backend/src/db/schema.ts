@@ -160,9 +160,9 @@ export const diagnosticos = pgTable(
     imageS3Key: text('image_s3_key').notNull(),
     latitude: doublePrecision('latitude').notNull(),
     longitude: doublePrecision('longitude').notNull(),
-    doencaId: uuid('doenca_id')
-      .references(() => doencas.id)
-      .notNull(),
+    // Nulo para diagnósticos especiais (Saudável, Fitotoxicidade): são resultados
+    // legítimos do CV que não correspondem a nenhuma doença do catálogo.
+    doencaId: uuid('doenca_id').references(() => doencas.id),
     confiancaIa: doublePrecision('confianca_ia').notNull(),
     modeloUsado: varchar('modelo_usado', { length: 100 }).notNull(),
     tempoInferenciaMs: integer('tempo_inferencia_ms').notNull(),
