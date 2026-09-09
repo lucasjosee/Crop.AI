@@ -9,7 +9,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().default('3000'),
   DATABASE_URL: z.string().min(1),
-  JWT_SECRET: z.string(),
+  JWT_SECRET: z.string().min(1),
   LLM_PROVIDER: z.enum(['gemini', 'claude']).default('gemini'),
   LLM_API_KEY: z.string().min(1),
   // For claude: set LLM_MODEL_ID=claude-3-5-sonnet-20241022 in .env
@@ -20,6 +20,14 @@ const envSchema = z.object({
   S3_ACCESS_KEY: z.string().min(1),
   S3_SECRET_KEY: z.string().min(1),
   S3_BUCKET: z.string().default('plant-diagnostics'),
+}).superRefine((values, context) => {
+  if (values.NODE_ENV === 'production' && values.JWT_SECRET.length < 32) {
+    context.addIssue({
+      code: 'custom',
+      path: ['JWT_SECRET'],
+      message: 'JWT_SECRET deve ter ao menos 32 caracteres em produção.',
+    });
+  }
 });
 
 export const env = envSchema.parse(process.env);

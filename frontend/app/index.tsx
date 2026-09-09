@@ -34,7 +34,6 @@ export default function HomeScreen() {
   
   const [diagnostics, setDiagnostics] = useState<any[]>([]);
   const [diseases, setDiseases] = useState<any[]>([]);
-  const [pendingCount, setPendingCount] = useState(0);
   const [dbLoading, setDbLoading] = useState(false);
 
   // Load database seed data on focus/mount
@@ -68,11 +67,8 @@ export default function HomeScreen() {
       diagList.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
       setDiagnostics(diagList);
 
-      // Update pending items counter
-      const pending = diagList.filter(d => d.sync_status === 'PENDING').length;
-      setPendingCount(pending);
-    } catch (e) {
-      console.error('[HomeScreen] Failed to read local DB:', e);
+    } catch {
+      console.error('[HomeScreen] Failed to read local DB.');
       Toast.show({
         type: 'error',
         text1: 'Erro de Banco de Dados',
@@ -121,8 +117,8 @@ export default function HomeScreen() {
         text1: 'Diagnóstico Enfileirado!',
         text2: 'Salvo localmente com sucesso (offline-first).',
       });
-    } catch (err) {
-      console.error('[HomeScreen] Failed to save mock diagnostic:', err);
+    } catch {
+      console.error('[HomeScreen] Failed to save mock diagnostic.');
       Toast.show({
         type: 'error',
         text1: 'Erro de Banco',
@@ -227,6 +223,8 @@ export default function HomeScreen() {
             style={styles.logoutBtn} 
             activeOpacity={0.7}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="Sair da conta"
           >
             <Ionicons name="log-out-outline" size={24} color={theme.colors.textSecondary} />
           </TouchableOpacity>
@@ -243,12 +241,15 @@ export default function HomeScreen() {
             value={searchQuery}
             onChangeText={setSearchQuery}
             style={styles.searchInput}
+            accessibilityLabel={activeTab === 'diagnostics' ? 'Buscar diagnósticos' : 'Buscar doenças no catálogo'}
           />
           {searchQuery ? (
             <TouchableOpacity 
               onPress={() => setSearchQuery('')} 
               style={styles.clearSearchBtn}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Limpar busca"
             >
               <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
             </TouchableOpacity>
@@ -265,6 +266,8 @@ export default function HomeScreen() {
             setSearchQuery('');
           }}
           activeOpacity={0.7}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: activeTab === 'diagnostics' }}
         >
           <Text style={[styles.tabButtonText, activeTab === 'diagnostics' && styles.tabButtonTextActive]}>
             Meus Diagnósticos
@@ -278,6 +281,8 @@ export default function HomeScreen() {
             setSearchQuery('');
           }}
           activeOpacity={0.7}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: activeTab === 'encyclopedia' }}
         >
           <Text style={[styles.tabButtonText, activeTab === 'encyclopedia' && styles.tabButtonTextActive]}>
             Enciclopédia de Doenças
@@ -318,13 +323,15 @@ export default function HomeScreen() {
                     />
                   )}
                 </View>
-                <Button
-                  title="+ Novo Offline (Mock)"
-                  onPress={handleAddMockDiagnostic}
-                  variant="primary"
-                  style={styles.mockAddBtn}
-                  textStyle={styles.mockAddBtnText}
-                />
+                {__DEV__ && (
+                  <Button
+                    title="+ Novo Offline (Mock)"
+                    onPress={handleAddMockDiagnostic}
+                    variant="primary"
+                    style={styles.mockAddBtn}
+                    textStyle={styles.mockAddBtnText}
+                  />
+                )}
               </View>
 
               {filteredDiagnostics.length === 0 ? (
@@ -419,6 +426,8 @@ export default function HomeScreen() {
           style={styles.bottomTabItem} 
           onPress={() => router.push('/camera')}
           activeOpacity={0.7}
+          accessibilityRole="tab"
+          accessibilityLabel="Abrir câmera"
         >
           <Ionicons name="camera-outline" size={24} color={theme.colors.textSecondary} />
           <Text style={styles.bottomTabLabel}>Câmera</Text>
@@ -428,13 +437,21 @@ export default function HomeScreen() {
           style={styles.bottomTabItem}
           onPress={() => router.push('/chat')}
           activeOpacity={0.7}
+          accessibilityRole="tab"
+          accessibilityLabel="Abrir chat com agrônomo"
         >
           <Ionicons name="chatbubbles-outline" size={24} color={theme.colors.textSecondary} />
           <Text style={styles.bottomTabLabel}>Chat</Text>
         </TouchableOpacity>
         
         {/* L12: Esta aba representa a seção consolidada de Histórico & Catálogo (Tela 1 da spec). */}
-        <TouchableOpacity style={styles.bottomTabItemActive} activeOpacity={1}>
+        <TouchableOpacity
+          style={styles.bottomTabItemActive}
+          activeOpacity={1}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: true }}
+          accessibilityLabel="Catálogo, aba atual"
+        >
           <Ionicons name="book" size={24} color={theme.colors.primary} />
           <Text style={styles.bottomTabLabelActive}>Catálogo</Text>
         </TouchableOpacity>

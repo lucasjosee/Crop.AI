@@ -62,7 +62,12 @@ async function seed() {
 
     console.log('✅ Seed completed successfully!');
   } catch (error) {
+    // Descartar o erro e ainda sair com 0 fazia uma cadeia
+    // `db:migrate && db:seed && start` seguir adiante com o catálogo pela
+    // metade, e todo /sync/diagnostics depois falhava com INVALID_DOENCA_ID
+    // sem ninguém conseguir ligar a causa ao seed.
     console.error('❌ Error during seed:', error);
+    process.exitCode = 1;
   } finally {
     await pool.end();
   }

@@ -389,38 +389,41 @@ gantt
 
 **Objetivo:** Quando online, o diagnóstico ganha uma segunda opinião da LLM Multimodal, e o produtor pode dar feedback.
 
+> [!NOTE]
+> **Estado em 20/07/2026:** implementação do escopo MVP concluída em código. A validação em dispositivo físico, o upload real no MinIO/S3 e as chamadas com credenciais reais de Gemini/Claude continuam como gates manuais de ambiente.
+
 ### Entregas
 
 #### Backend: Cross-Validation
 
 > Referência: [[Estratégia de Cross-Validation Visual]] e [[Contratos de API]] — Endpoint 9
 
-- [ ] `POST /api/v1/diagnosis/cross-validate`
+- [x] `POST /api/v1/diagnosis/cross-validate`
   - Recebe: `diagnostic_local_id`, `image_s3_key`, `cv_result` (doenca, confiança, modelo)
   - Envia imagem original + resultado do CV como "âncora" para LLM Multimodal
   - Retorna: `result_status` (CONFIRMED / ENRICHED / DIVERGENT)
   - Timeout: 15s → 504 LLM_TIMEOUT
   - Erro LLM: 502 LLM_UNAVAILABLE
-- [ ] Salvar resultado no campo `cross_validation_status` do diagnóstico
+- [x] Salvar resultado no campo `cross_validation_status` do diagnóstico
 
 #### Frontend: Enrichment Progressivo
-- [ ] Resultado do CV aparece imediatamente (~50ms)
-- [ ] Se online: loader "Consultando Agrônomo IA..." enquanto LLM processa (~3-5s)
-- [ ] Resultado da LLM aparece como enriquecimento progressivo:
+- [x] Resultado do CV aparece imediatamente (~50ms)
+- [x] Se online: loader "Consultando Agrônomo IA..." enquanto LLM processa (~3-5s)
+- [x] Resultado da LLM aparece como enriquecimento progressivo:
   - ✅ **CONFIRMED**: selo de confirmação no card
   - 💡 **ENRICHED**: observações extras da LLM aparecem abaixo do resultado
   - ⚠️ **DIVERGENT**: ambas as opiniões exibidas lado a lado, banner de aviso
-- [ ] **Regras de prioridade**:
+- [x] **Regras de prioridade**:
   - CV confiança ≥70% + LLM diverge → mostrar AMBOS
   - CV confiança <70% + LLM diverge → LLM como sugestão primária
   - LLM indisponível → resultado CV sem selo (sem cross-validation)
-- [ ] Se offline: `cross_validation_status = SKIPPED`
+- [x] Se offline: `cross_validation_status = SKIPPED`
 
 #### Frontend: Feedback (Human-in-the-Loop)
-- [ ] Botões no card de resultado: "Diagnóstico Correto ✓" / "Incorreto ✗" / "Parece ser outra doença"
-- [ ] Se "outra doença": picker/input para selecionar a doença correta + campo de observações
-- [ ] Em caso de DIVERGENT: botões refletem ambas as opiniões (qual o produtor acha que está certa)
-- [ ] Feedback salvo na `fila_feedbacks` (sincronizado na Sprint 5)
+- [x] Botões no card de resultado: "Diagnóstico Correto ✓" / "Incorreto ✗" / "Parece ser outra doença"
+- [x] Se "outra doença": picker/input para selecionar a doença correta + campo de observações
+- [x] Em caso de DIVERGENT: botões refletem ambas as opiniões (qual o produtor acha que está certa)
+- [x] Feedback salvo na `fila_feedbacks` (sincronizado na Sprint 5)
 
 ### 🧪 Gate de Qualidade — Sprint 6
 
@@ -450,14 +453,14 @@ gantt
   - Target: ≤500ms (RNF04)
 - [ ] Benchmark de RAM do SLM em operação
   - Target: ≤2GB (RNF05)
-- [ ] Otimizar carregamento do modelo SLM (JIT, apenas quando abre o Chat)
-- [ ] Medir e otimizar startup time do app
+- [x] Otimizar carregamento do modelo SLM (JIT, apenas quando abre o Chat)
+- [ ] Medir e otimizar startup time do app *(telemetria de boot implementada; medição em dispositivos pendente)*
 
 #### Segurança
-- [ ] Confirmar SQLCipher ativo (testar que DB não é legível sem a chave)
-- [ ] Confirmar tokens no Keychain/EncryptedSharedPreferences
-- [ ] Revisar que nenhum segredo está em logs ou error responses
-- [ ] Confirmar que `user_id` NUNCA é enviado no body (sempre extraído do JWT)
+- [ ] Confirmar SQLCipher ativo (build e gate runtime implementados; extração/leitura sem chave pendente em aparelho)
+- [x] Confirmar tokens no Keychain/EncryptedSharedPreferences
+- [x] Revisar que nenhum segredo está em logs ou error responses
+- [x] Confirmar que `user_id` NUNCA é enviado no body (sempre extraído do JWT)
 - [ ] Validar que bucket S3 bloqueia acesso público
 
 #### Distribuição
@@ -469,8 +472,8 @@ gantt
 
 > Referência: [[Infraestrutura e Deploy]]
 
-- [ ] GitHub Actions: lint → typecheck → test (Vitest backend) → build
-- [ ] Branch strategy: `develop` → PR → `main` → auto-deploy Railway
+- [x] GitHub Actions: lint → typecheck → test (Vitest backend) → build
+- [ ] Branch strategy: `develop` → PR → `main` → auto-deploy Railway *(workflow e branches cobertos; proteção de branch e integração Railway dependem da configuração externa)*
 
 #### QA / Testes E2E
 - [ ] Fluxo completo online: Login → Câmera → Diagnóstico → Cross-Validation → Feedback → Sync
@@ -486,8 +489,10 @@ gantt
 
 #### Bug Fixes e Polish
 - [ ] Revisar UX de TODOS os estados de erro (feedback visual claro)
-- [ ] Micro-animações: transições de tela, loading states, toasts
-- [ ] Acessibilidade básica: contraste, tamanho de fonte, labels para screen readers
+- [x] Micro-animações: transições de tela, loading states, toasts
+- [x] Acessibilidade básica: contraste, tamanho de fonte, labels para screen readers
+
+> **Estado em 05/08/2026:** estabilização automatizável concluída em código. Os benchmarks, builds de loja e ensaios E2E em hardware permanecem como gates de homologação e estão detalhados em [[Sprint 7 - Homologação de Campo]].
 
 ### 🧪 Gate de Qualidade — Sprint 7 (FINAL)
 
@@ -587,6 +592,8 @@ Antes de implementar, definir onde hospedar o modelo:
 
 ### [P1] Gap Sprint 4 — Botão "Conversar com o Agrônomo" na tela de diagnóstico
 
+**Status:** ✅ Corrigido em 20/07/2026. O botão preenche `useChatStore.setDiagnosticContext(...)` e navega para `/chat`, preservando também os fluxos Saudável e Fitotoxicidade.
+
 **Problema:** A tela `chat.tsx` foi implementada na Sprint 4, mas o botão de navegação para ela a partir da tela de resultado do diagnóstico (`camera.tsx` / tela de resultado) não foi conectado. O usuário não consegue abrir o chat com contexto do diagnóstico a partir do fluxo principal.
 
 **O que fazer:**
@@ -600,6 +607,8 @@ Antes de implementar, definir onde hospedar o modelo:
 ---
 
 ### [P2] Chat — Renderização Markdown + esconder raciocínio CoT
+
+**Status parcial (Sprint 7):** a instrução para exibir Chain of Thought foi removida e o prompt agora exige somente conclusão e justificativa curta. Renderização Markdown permanece fora do MVP para evitar dependência adicional.
 
 **Problema:** O System Prompt instrui o modelo a usar Chain of Thought (CoT) antes da resposta, mas esse raciocínio interno está aparecendo na interface para o usuário. Além disso, o texto bruto sem markdown fica ilegível.
 

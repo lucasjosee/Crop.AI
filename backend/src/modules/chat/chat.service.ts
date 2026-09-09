@@ -31,8 +31,8 @@ export class ChatService {
 
     try {
       await this.provider.stream(systemPrompt, input.history, input.message, callbacks);
-    } catch (err: any) {
-      throw new AppError(502, 'LLM_UNAVAILABLE', `Serviço de IA indisponível: ${err.message}`);
+    } catch {
+      throw new AppError(502, 'LLM_UNAVAILABLE', 'O serviço de IA está temporariamente indisponível.');
     }
   }
 

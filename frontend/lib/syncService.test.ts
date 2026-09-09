@@ -117,6 +117,10 @@ describe('syncService', () => {
     expect(row.image_s3_key).toBe('diagnosticos/u/x.jpg');
     expect(row.sync_status).toBe('SYNCED');
     expect(row.server_id).toBe('srv-1');
+    const syncCall = vi.mocked(api.post).mock.calls.find((call) =>
+      String(call[0]).includes('/sync/diagnostics')
+    );
+    expect((syncCall?.[1] as any).diagnostics[0].cross_validation.status).toBe('SKIPPED');
   });
 
   it('falha no upload mantém PENDING e não envia o lote (T5.8)', async () => {

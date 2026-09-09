@@ -42,8 +42,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         pendingFeedbacks: countUnsynced(feedbacks),
         pendingSlmLogs: countUnsynced(slmLogs),
       });
-    } catch (err) {
-      console.warn('[SyncStore] Falha ao contar pendências:', err);
+    } catch {
+      console.warn('[SyncStore] Falha ao contar pendências.');
     }
   },
 

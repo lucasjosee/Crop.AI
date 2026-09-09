@@ -58,8 +58,8 @@ function decodeJwt(token: string): JwtPayload | null {
       throw new Error('Token com payload inválido ou incompleto.');
     }
     return decoded;
-  } catch (e) {
-    console.error('[JWT Decode Error] Failed to decode token:', e);
+  } catch {
+    console.error('[JWT Decode Error] Failed to decode token.');
     return null;
   }
 }
@@ -105,13 +105,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             await get().setTokens(access_token, new_refresh_token);
             set({ isLoading: false });
             return;
-          } catch (err) {
-            console.warn('[AuthStore] Boot refresh failed, clearing session.', err);
+          } catch {
+            console.warn('[AuthStore] Boot refresh failed, clearing session.');
           }
         }
       }
-    } catch (e) {
-      console.error('[AuthStore] Failed to load stored session:', e);
+    } catch {
+      console.error('[AuthStore] Failed to load stored session.');
     }
     
     // Se falhar ou expirar tudo
@@ -214,8 +214,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         try {
           // Chamar rota de logout no backend
           await api.post('/api/v1/auth/logout', { refresh_token: refreshToken });
-        } catch (e) {
-          console.warn('[AuthStore] Logout request to backend failed (possibly offline). Continuing local logout.', e);
+        } catch {
+          console.warn('[AuthStore] Logout request failed; continuing local logout.');
         }
       }
     } finally {

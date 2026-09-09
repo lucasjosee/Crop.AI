@@ -14,8 +14,8 @@ export const theme = {
     borderOutline: '#BDBDBD',     // Light Grey Outline for secondary/social buttons
     borderActive: '#2E7D32',    // Border color when focused/active
     error: '#D32F2F',           // Error red
-    warning: '#F57C00',         // Burnt Orange for offline pending status
-    success: '#81C784',         // Sync completed light green
+    warning: '#A64B00',         // Accessible burnt orange on white
+    success: '#2E7D32',         // Accessible green on white
     info: '#1976D2',            // Informative blue
     disabled: '#E0E0E0',        // Disabled state background
     shadow: '#000000',          // Shadow color

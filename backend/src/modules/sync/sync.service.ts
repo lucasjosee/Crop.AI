@@ -7,35 +7,124 @@ import {
   sessoesSlm,
   interacoesSlm,
 } from '../../db/schema';
-import { SyncDiagnosticsInput, SyncFeedbackInput, SyncSlmLogsInput } from './sync.schema';
+import {
+  diagnosticItemSchema,
+  SyncDiagnosticsInput,
+  SyncFeedbackInput,
+  SyncSlmLogsInput,
+} from './sync.schema';
 
 interface SyncedItem { local_id: string; server_id: string }
 interface FailedItem { local_id: string; error_code: string; message: string }
+
+/** Vereditos que só o pipeline de cross-validation do servidor pode produzir. */
+const TERMINAL_CV_STATUSES = ['CONFIRMED', 'ENRICHED', 'DIVERGENT'];
+
+/** Recupera o local_id de um item que não passou na validação, para poder reportá-lo. */
+function extractLocalId(raw: unknown): string {
+  const candidate = (raw as { local_id?: unknown } | null)?.local_id;
+  return typeof candidate === 'string' ? candidate : 'desconhecido';
+}
 
 export class SyncService {
   async syncDiagnostics(userId: string, input: SyncDiagnosticsInput) {
     const synced_items: SyncedItem[] = [];
     const failed_items: FailedItem[] = [];
+    const expectedPrefix = `diagnosticos/${userId}/`;
 
-    for (const item of input.diagnostics) {
-      try {
-        const existing = await db.query.diagnosticos.findFirst({
-          where: eq(diagnosticos.mobileLocalId, item.local_id),
+    for (const raw of input.diagnostics) {
+      const parsed = diagnosticItemSchema.safeParse(raw);
+      if (!parsed.success) {
+        failed_items.push({
+          local_id: extractLocalId(raw),
+          error_code: 'VALIDATION_ERROR',
+          message: parsed.error.issues
+            .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+            .join('; '),
         });
-        if (existing) {
-          synced_items.push({ local_id: item.local_id, server_id: existing.id });
+        continue;
+      }
+      const item = parsed.data;
+
+      try {
+        // A imagem precisa pertencer ao prefixo do usuário autenticado — mesma
+        // invariante que o endpoint de cross-validation já aplica.
+        if (!item.image_s3_key.startsWith(expectedPrefix)) {
+          failed_items.push({
+            local_id: item.local_id,
+            error_code: 'INVALID_IMAGE_KEY',
+            message: 'A imagem não pertence ao usuário autenticado.',
+          });
           continue;
         }
 
-        const doenca = await db.query.doencas.findFirst({
-          where: eq(doencas.id, item.ai_result.doenca_id),
-        });
-        if (!doenca) {
-          failed_items.push({
-            local_id: item.local_id,
-            error_code: 'INVALID_DOENCA_ID',
-            message: 'O doenca_id informado não existe no catálogo.',
+        // O gate de catálogo vale para insert e update: ambos escrevem doencaId,
+        // que é foreign key. Nulo é legítimo (diagnósticos especiais).
+        if (item.ai_result.doenca_id) {
+          const doenca = await db.query.doencas.findFirst({
+            where: eq(doencas.id, item.ai_result.doenca_id),
           });
+          if (!doenca) {
+            failed_items.push({
+              local_id: item.local_id,
+              error_code: 'INVALID_DOENCA_ID',
+              message: 'O doenca_id informado não existe no catálogo.',
+            });
+            continue;
+          }
+        }
+
+        const incomingLlmDoencaId = item.cross_validation?.llm_doenca_id ?? null;
+        if (incomingLlmDoencaId) {
+          const llmDoenca = await db.query.doencas.findFirst({
+            where: eq(doencas.id, incomingLlmDoencaId),
+          });
+          if (!llmDoenca) {
+            failed_items.push({
+              local_id: item.local_id,
+              error_code: 'INVALID_DOENCA_ID',
+              message: 'O llm_doenca_id informado não existe no catálogo.',
+            });
+            continue;
+          }
+        }
+
+        // Um veredito terminal só pode nascer do pipeline do servidor. Se o cliente
+        // afirmar um, ele é descartado junto com os campos llm_* que o acompanham.
+        const clientStatus = item.cross_validation?.status ?? 'SKIPPED';
+        const clientAssertsVerdict = TERMINAL_CV_STATUSES.includes(clientStatus);
+        const acceptedCrossValidation = {
+          crossValidationStatus: clientAssertsVerdict ? ('SKIPPED' as const) : clientStatus,
+          llmDoencaId: clientAssertsVerdict ? null : incomingLlmDoencaId,
+          llmConfianca: clientAssertsVerdict ? null : item.cross_validation?.llm_confianca ?? null,
+          llmObservacoes: clientAssertsVerdict
+            ? null
+            : item.cross_validation?.llm_observacoes ?? null,
+        };
+
+        const existing = await db.query.diagnosticos.findFirst({
+          where: and(
+            eq(diagnosticos.userId, userId),
+            eq(diagnosticos.mobileLocalId, item.local_id)
+          ),
+        });
+        if (existing) {
+          const hasServerResult = TERMINAL_CV_STATUSES.includes(existing.crossValidationStatus);
+          await db
+            .update(diagnosticos)
+            .set({
+              imageS3Key: item.image_s3_key,
+              latitude: item.location.lat,
+              longitude: item.location.lng,
+              doencaId: item.ai_result.doenca_id,
+              confiancaIa: item.ai_result.confianca,
+              modeloUsado: item.ai_result.modelo_usado,
+              tempoInferenciaMs: item.ai_result.tempo_inferencia_ms,
+              capturedAt: new Date(item.timestamp),
+              ...(!hasServerResult && item.cross_validation ? acceptedCrossValidation : {}),
+            })
+            .where(eq(diagnosticos.id, existing.id));
+          synced_items.push({ local_id: item.local_id, server_id: existing.id });
           continue;
         }
 
@@ -51,7 +140,7 @@ export class SyncService {
             confiancaIa: item.ai_result.confianca,
             modeloUsado: item.ai_result.modelo_usado,
             tempoInferenciaMs: item.ai_result.tempo_inferencia_ms,
-            crossValidationStatus: 'SKIPPED',
+            ...acceptedCrossValidation,
             capturedAt: new Date(item.timestamp),
           })
           .returning({ id: diagnosticos.id });

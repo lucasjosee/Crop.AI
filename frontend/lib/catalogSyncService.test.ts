@@ -41,7 +41,12 @@ describe('catalogSyncService', () => {
     expect(result.updated).toBe(false);
     expect(mocks.execute).not.toHaveBeenCalled();
     expect(mocks.setSyncMeta).not.toHaveBeenCalled();
-    expect(vi.mocked(api.get).mock.calls[0][1]?.headers).toMatchObject({ 'If-None-Match': 'v1|abc' });
+    expect(vi.mocked(api.get)).toHaveBeenCalledWith(
+      '/api/v1/catalog/sync',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'If-None-Match': 'v1|abc' }),
+      })
+    );
   });
 
   it('aplica upserts e deletes e persiste o novo ETag (T5.6 app-side)', async () => {
@@ -70,14 +75,15 @@ describe('catalogSyncService', () => {
 
     expect(result.updated).toBe(true);
 
-    const sqls = mocks.execute.mock.calls.map((c: any[]) => c[0] as string);
+    const executeCalls = mocks.execute.mock.calls as unknown as Array<[string, any[]?]>;
+    const sqls = executeCalls.map((call) => call[0]);
     expect(sqls.some((s) => s.startsWith('INSERT OR REPLACE INTO doencas'))).toBe(true);
     expect(sqls.some((s) => s.startsWith('DELETE FROM doenca_defensivo WHERE id_defensivo'))).toBe(true);
     expect(sqls.some((s) => s.startsWith('DELETE FROM defensivos WHERE id'))).toBe(true);
     expect(sqls.some((s) => s.startsWith('INSERT OR REPLACE INTO doenca_defensivo'))).toBe(true);
 
     // causa calculada no upsert de doença
-    const doencaCall = mocks.execute.mock.calls.find((c: any[]) => (c[0] as string).startsWith('INSERT OR REPLACE INTO doencas'));
+    const doencaCall = executeCalls.find((call) => call[0].startsWith('INSERT OR REPLACE INTO doencas'));
     expect(doencaCall![1]).toContain('Fungo (Corynespora cassiicola)');
 
     expect(mocks.setSyncMeta).toHaveBeenCalledWith('catalog_etag', 'v2|def');
@@ -107,7 +113,13 @@ describe('catalogSyncService', () => {
     await syncCatalog();
 
     expect(vi.mocked(api.get)).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(api.get).mock.calls[1][1]?.params).toMatchObject({ cursor: 'cursor-page-2' });
+    expect(vi.mocked(api.get)).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/catalog/sync',
+      expect.objectContaining({
+        params: expect.objectContaining({ cursor: 'cursor-page-2' }),
+      })
+    );
     expect(mocks.setSyncMeta).toHaveBeenCalledTimes(1);
     expect(mocks.setSyncMeta).toHaveBeenCalledWith('catalog_etag', 'v3|ghi');
   });

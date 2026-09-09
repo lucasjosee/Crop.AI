@@ -1,6 +1,6 @@
 // backend/src/modules/chat/providers/gemini.provider.ts
 import { GoogleGenerativeAI, Content } from '@google/generative-ai';
-import type { LLMProvider, LLMMessage, StreamCallbacks } from './llm.provider';
+import type { LLMProvider, LLMMessage, StreamCallbacks, LLMImageInput } from './llm.provider';
 import { LLM_MAX_TOKENS, LLM_TEMPERATURE } from '../../../config/llm';
 
 export class GeminiProvider implements LLMProvider {
@@ -43,5 +43,28 @@ export class GeminiProvider implements LLMProvider {
     const finalResponse = await result.response;
     const tokensUsed = finalResponse.usageMetadata?.totalTokenCount ?? 0;
     callbacks.onDone(tokensUsed);
+  }
+
+  async analyzeImage(
+    systemPrompt: string,
+    userPrompt: string,
+    image: LLMImageInput
+  ): Promise<string> {
+    const model = this.client.getGenerativeModel({
+      model: this.modelId,
+      systemInstruction: systemPrompt,
+      generationConfig: {
+        maxOutputTokens: LLM_MAX_TOKENS,
+        temperature: LLM_TEMPERATURE,
+        responseMimeType: 'application/json',
+      },
+    });
+
+    const response = await model.generateContent([
+      { inlineData: { data: image.dataBase64, mimeType: image.mimeType } },
+      { text: userPrompt },
+    ]);
+
+    return response.response.text();
   }
 }

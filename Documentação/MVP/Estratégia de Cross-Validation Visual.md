@@ -332,4 +332,19 @@ WHERE cross_validation_status = 'DIVERGENT'
 
 ---
 
+## 8. Decisões da Implementação MVP (Sprint 6)
+
+Implementação consolidada em 20/07/2026:
+
+- O resultado do CV local é renderizado antes de persistência, upload ou chamada de rede. A segunda opinião é um enriquecimento progressivo e nunca bloqueia o fluxo offline.
+- O diagnóstico recebe `diagnostic_local_id` e entra em `fila_diagnosticos` imediatamente após a inferência. A migração SQLite v5 adiciona os campos de cross-validation via `PRAGMA user_version`, sem recriar tabelas.
+- O upload continua em dois passos. `image_s3_key` é persistido logo após o PUT e reutilizado pelo cross-validation, pelo chat e pela sincronização posterior.
+- O backend estende a abstração `LLMProvider` com análise multimodal estruturada. Gemini e Claude recebem imagem, âncora do CV e catálogo permitido; a resposta é validada antes de persistir.
+- `diagnostic_local_id` + usuário autenticado formam a chave idempotente da operação. Quando o cross-validation chega antes do sync do diagnóstico, o backend cria o registro pendente e o endpoint de sync hidrata depois os metadados locais sem sobrescrever uma segunda opinião já finalizada.
+- O `image_s3_key` precisa estar no prefixo do usuário extraído do JWT. `user_id` no body é rejeitado.
+- Offline, casos especiais (`Saudável` e `Fitotoxicidade`) e falhas de LLM permanecem utilizáveis com status local `SKIPPED`; o código específico da falha fica somente no SQLite para diagnóstico operacional.
+- Divergências sempre exibem as duas opiniões. A LLM só ganha destaque primário quando a confiança do CV é inferior a 70%, sem ocultar o resultado local.
+- Feedback é gravado em `fila_feedbacks` por `diagnostic_local_id`, inclusive antes do diagnóstico possuir `server_id`.
+
+Ficaram explicitamente fora do escopo: RAG vetorial, background sync, download/distribuição do GGUF e qualquer recurso V2.
 

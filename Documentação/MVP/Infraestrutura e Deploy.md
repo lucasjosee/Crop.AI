@@ -183,7 +183,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - run: npm ci
@@ -203,6 +203,9 @@ O Railway é configurado para **auto-deploy** a partir da branch `main`:
 
 > [!IMPORTANT]
 > **Branch strategy:** Desenvolvimento na branch `develop`, merge para `main` apenas via Pull Request com CI verde. Todo push em `main` vai direto para produção.
+
+> [!NOTE]
+> O workflow versionado em `.github/workflows/ci.yml` executa jobs separados de frontend e backend. O backend sobe PostgreSQL 16 isolado, aplica o schema e só então roda os testes. A proteção de `main` e a integração de auto-deploy do Railway são configurações externas ao repositório e devem exigir o status verde desse workflow.
 
 ---
 
@@ -393,5 +396,4 @@ UptimeRobot               →    AWS CloudWatch + Datadog
 O código do backend **não muda** — apenas a connection string do banco e o host de deploy. O Drizzle ORM funciona identicamente em ambos os ambientes.
 
 ---
-
 
