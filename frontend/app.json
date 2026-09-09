@@ -8,7 +8,10 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Este aplicativo precisa de acesso à câmera para tirar fotos de folhas de soja doentes e analisá-las."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +20,10 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -29,12 +35,6 @@
     },
     "plugins": [
       "expo-router",
-      [
-        "react-native-vision-camera",
-        {
-          "cameraPermissionText": "Este aplicativo precisa de acesso à câmera para tirar fotos de folhas de soja doentes e analisá-las."
-        }
-      ],
       "react-native-fast-tflite",
       "llama.rn"
     ]
