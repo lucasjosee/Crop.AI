@@ -37,6 +37,29 @@ const input = {
 describe('crossValidationService', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  // P3.4 — o try/catch envolvia o api.post E o UPDATE no SQLite, então uma falha
+  // local (ex.: FK de llm_doenca_id com catálogo desatualizado) virava
+  // LLM_UNAVAILABLE. O app marcava SKIPPED, o guard do servidor impedia a
+  // auto-correção, e cliente e servidor divergiam permanentemente.
+  it('não reporta falha do banco local como indisponibilidade do LLM', async () => {
+    vi.mocked(api.post).mockResolvedValue({
+      data: {
+        cross_validation: {
+          result_status: 'DIVERGENT',
+          llm_doenca_id: '00000000-0000-4000-8000-000000000020',
+          llm_doenca_nome: 'Mancha Alvo',
+          llm_confianca: 0.8,
+          llm_observacoes: 'Divergência.',
+        },
+      },
+    } as never);
+    mocks.execute.mockRejectedValueOnce(new Error('FOREIGN KEY constraint failed'));
+
+    await expect(crossValidateDiagnostic(input)).rejects.not.toBeInstanceOf(
+      CrossValidationRequestError
+    );
+  });
+
   it('reutiliza image_s3_key e persiste CONFIRMED progressivamente', async () => {
     vi.mocked(api.post).mockResolvedValue({
       data: {

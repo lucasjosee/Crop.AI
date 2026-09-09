@@ -25,6 +25,7 @@ import { dbDriver } from '../db/sqlite';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { runImageInference, InferenceResult } from '../lib/inference';
 import { saveImagePersistently } from '../lib/imageHelper';
+import { discardDiagnosticDraft } from '../lib/diagnosticDraftService';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { useChatStore } from '../store/useChatStore';
@@ -268,6 +269,9 @@ export default function CameraScreen() {
     forcedTarget?: string
   ) => {
     setIsProcessing(true);
+    // Nova captura sem passar pelo Retake abandona o rascunho anterior do mesmo
+    // jeito, então ele também precisa ser descartado.
+    void discardAbandonedDraft(diagnosticLocalId, diagnosticPersistenceRef.current);
     setCapturedImage(uri);
     setDiagnosticLocalId(null);
     setImageS3Key(null);
@@ -463,7 +467,28 @@ export default function CameraScreen() {
   };
 
   // Reset and restart scanner
+  /**
+   * O local_id pode ainda não ter chegado ao state quando o produtor toca em
+   * Retake — a persistência é disparada sem await. Por isso o descarte também
+   * aguarda a promessa em voo antes de remover.
+   */
+  const discardAbandonedDraft = async (
+    localId: string | null,
+    pending: Promise<string> | null
+  ) => {
+    try {
+      const resolved = localId ?? (pending ? await pending : null);
+      await discardDiagnosticDraft(resolved);
+    } catch {
+      console.warn('[Camera] Não foi possível descartar o rascunho abandonado.');
+    }
+  };
+
   const handleResetCamera = () => {
+    // O rascunho já foi persistido automaticamente após a inferência; sem
+    // descartá-lo aqui, cada tentativa refeita sobe para o servidor no próximo
+    // sync e consome um PUT no S3.
+    void discardAbandonedDraft(diagnosticLocalId, diagnosticPersistenceRef.current);
     setCapturedImage(null);
     setInferenceResult(null);
     setDiseaseDetails(null);

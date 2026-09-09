@@ -310,7 +310,7 @@ export async function initDatabase(): Promise<IDatabaseDriver> {
 // -------------------------------------------------------------
 // Lógica de Migrações (DDL) e Seed Inicial para o SQLite Nativo
 // -------------------------------------------------------------
-async function runMigrationsAndSeed(driver: IDatabaseDriver) {
+export async function runMigrationsAndSeed(driver: IDatabaseDriver) {
   let version = 0;
   try {
     const versionRes = await driver.execute('PRAGMA user_version;');
@@ -545,8 +545,31 @@ async function runMigrationsAndSeed(driver: IDatabaseDriver) {
         console.warn('[Database] Cross-validation column might already exist.');
       }
     }
+    // ADD COLUMN NOT NULL DEFAULT preenche o default em todas as linhas
+    // existentes. Elas são anteriores à cross-validation e nunca voltam ao
+    // fluxo, então PENDING as deixaria eternamente "em análise" no servidor.
+    // Neste ponto toda linha da tabela é legada, então o UPDATE é exato.
+    await driver.execute(
+      "UPDATE fila_diagnosticos SET cross_validation_status = 'SKIPPED' WHERE cross_validation_status = 'PENDING';"
+    );
     await driver.execute('PRAGMA user_version = 5;');
   }
+
+  if (version < 6) {
+    console.log('[Database] Migrating to version 6: normalizando diagnósticos legados...');
+    // Para quem já rodou a v5 sem o backfill. A cross-validation é disparada em
+    // memória e não é retomada após reinício do app, então toda linha PENDING
+    // sem nenhum dado de LLM é resíduo, nunca uma análise em andamento.
+    await driver.execute(
+      `UPDATE fila_diagnosticos SET cross_validation_status = 'SKIPPED'
+       WHERE cross_validation_status = 'PENDING'
+         AND llm_doenca_id IS NULL
+         AND llm_observacoes IS NULL;`
+    );
+    await driver.execute('PRAGMA user_version = 6;');
+    console.log('[Database] Migration to version 6 complete.');
+  }
+
 }
 
 // -------------------------------------------------------------
