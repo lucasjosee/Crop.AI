@@ -239,14 +239,65 @@ describe('CloudEngine', () => {
     expect(cb.onError).toHaveBeenCalledWith('TOKEN_EXPIRED');
   });
 
-  it('erro no corpo do SSE é mapeado pelo código', async () => {
+  it('abortar durante o refresh de 401 reporta ABORTED e não abre nova conexão', async () => {
+    let liberarRefresh: (token: string) => void = () => {};
+    mocks.refreshAccessToken.mockImplementationOnce(
+      () => new Promise<string>((resolve) => { liberarRefresh = resolve; })
+    );
+    const controller = new AbortController();
+    const cb = callbacks();
+
+    engine.respond(baseInput(), cb, controller.signal);
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    FakeEventSource.last().emit('error', { type: 'error', xhrStatus: 401, message: 'x' });
+    await vi.waitFor(() => expect(mocks.refreshAccessToken).toHaveBeenCalledTimes(1));
+
+    // cancelamento chega enquanto o refresh está em voo — janela em que nenhum
+    // listener de abort está registrado
+    controller.abort();
+    liberarRefresh('token-novo');
+    await vi.waitFor(() => expect(cb.onError).toHaveBeenCalledWith('ABORTED'));
+
+    expect(FakeEventSource.instances).toHaveLength(1);
+  });
+
+  it.each([
+    ['LLM_TIMEOUT', 'TIMEOUT'],
+    ['RATE_LIMITED', 'RATE_LIMITED'],
+    ['TOKEN_EXPIRED', 'TOKEN_EXPIRED'],
+    ['QUALQUER_OUTRO', 'LLM_UNAVAILABLE'],
+  ])('erro %s no corpo do SSE vira %s', async (code, esperado) => {
     const cb = callbacks();
     engine.respond(baseInput(), cb, new AbortController().signal);
     await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
 
-    FakeEventSource.last().emit('message', { data: JSON.stringify({ error: { code: 'LLM_TIMEOUT', status: 504 } }) });
+    FakeEventSource.last().emit('message', { data: JSON.stringify({ error: { code } }) });
 
-    expect(cb.onError).toHaveBeenCalledWith('TIMEOUT');
+    expect(cb.onError).toHaveBeenCalledWith(esperado);
+  });
+
+  it('a nota de origem local considera o histórico inteiro, não só a janela de 20', async () => {
+    // a resposta local ficou para trás na janela, mas o modelo ainda precisa
+    // saber que parte da conversa veio de um modelo compacto
+    const history = [msg(0), msg(1, 'LOCAL_SLM'), ...Array.from({ length: CLOUD_HISTORY_WINDOW }, (_, i) => msg(i + 2))];
+    engine.respond(baseInput({ history }), callbacks(), new AbortController().signal);
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    const body = bodyOf(FakeEventSource.last());
+    expect(body.history[0].content).toContain('modelo local compacto');
+    expect(body.history).toHaveLength(CLOUD_HISTORY_WINDOW + 1);
+  });
+
+  it('sem diseaseName e fora dos casos especiais, cv_result usa um nome genérico', async () => {
+    const attachment = {
+      imageUri: 'file:///f.jpg', imageS3Key: 'diagnosticos/u/ja.jpg',
+      cvResult: { diseaseId: 'uuid-doenca', confidence: 0.8, inferenceTimeMs: 40, modelUsed: 'tflite' },
+    };
+    engine.respond(baseInput({ attachment }), callbacks(), new AbortController().signal);
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    expect(bodyOf(FakeEventSource.last()).cv_result.doenca_nome).toBe('doença identificada');
   });
 
   it('abort pelo signal fecha a conexão e reporta ABORTED', async () => {

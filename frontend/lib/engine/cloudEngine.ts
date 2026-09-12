@@ -168,10 +168,16 @@ export class CloudEngine implements ConversationEngine {
           close();
           refreshAccessToken()
             .then((newToken) => {
+              if (signal.aborted) {
+                callbacks.onError('ABORTED');
+                return;
+              }
               token = newToken;
               attempt();
             })
-            .catch(() => callbacks.onError('TOKEN_EXPIRED'));
+            .catch(() => {
+              callbacks.onError(signal.aborted ? 'ABORTED' : 'TOKEN_EXPIRED');
+            });
           return;
         }
         fail(mapHttpStatus(status));
