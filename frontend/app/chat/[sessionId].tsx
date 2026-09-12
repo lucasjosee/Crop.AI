@@ -50,6 +50,11 @@ export default function ChatSessionScreen() {
   const [input, setInput] = useState('');
   const [chatError, setChatError] = useState<string | null>(null);
   const [partial, setPartial] = useState<string | null>(null);
+  // Distingue por que `partial` está na tela: resposta truncada por erro do
+  // motor (rótulo "resposta incompleta") vs. resposta completa que só não
+  // foi para o banco (rótulo "não salva") — os dois setam chatError, então
+  // não dá para usar a presença dele como discriminador.
+  const [partialUnsaved, setPartialUnsaved] = useState(false);
   const [lastFailed, setLastFailed] = useState<ChatMessage | null>(null);
 
   const { isStreaming, streamingContent, pendingResponseFor, modelLoadProgress } = useChatStore();
@@ -78,6 +83,7 @@ export default function ChatSessionScreen() {
       store.resetStreaming();
       setChatError(null);
       setPartial(null);
+      setPartialUnsaved(false);
       setLastFailed(null);
 
       const history = (await listMessages(sessionId)).filter((m) => m.id !== userMessage.id);
@@ -118,7 +124,12 @@ export default function ChatSessionScreen() {
                 try {
                   await appendMessage({ sessionId, role: 'assistant', content: streamed, source, latencyMs: meta.latencyMs });
                 } catch {
-                  setChatError('A resposta chegou mas não pôde ser salva. Ela some ao sair da tela.');
+                  // A resposta existe mas não foi para o banco. Mantém na tela
+                  // pelo mesmo caminho do parcial — sumir em silêncio seria pior,
+                  // e o texto pode conter dosagem de defensivo.
+                  setPartial(streamed);
+                  setPartialUnsaved(true);
+                  setChatError('A resposta chegou mas não pôde ser salva. Copie o que precisar antes de sair da tela.');
                 }
               }
             }
@@ -250,7 +261,7 @@ export default function ChatSessionScreen() {
           <View style={[styles.messageRow, styles.assistantRow]}>
             <View style={[styles.bubble, styles.assistantBubble]}>
               <Text style={styles.messageText}>{partial ?? streamingContent}</Text>
-              {partial && <Text style={styles.partialNote}>resposta incompleta</Text>}
+              {partial && <Text style={styles.partialNote}>{partialUnsaved ? 'não salva' : 'resposta incompleta'}</Text>}
             </View>
           </View>
         ) : null}
