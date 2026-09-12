@@ -1,4 +1,3 @@
-import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { assertSqlCipherAvailable } from './security';
 
@@ -38,179 +37,6 @@ export interface IDatabaseDriver {
 }
 
 // -------------------------------------------------------------
-// Driver de Fallback para Web (Memória)
-// -------------------------------------------------------------
-class WebDatabaseDriver implements IDatabaseDriver {
-  private tables: { [tableName: string]: any[] } = {
-    culturas: [
-      { 
-        id: 'cultura-soja-id', 
-        nome: 'Soja', 
-        estagio_fenologico_padrao: JSON.stringify(['Emergência (VE)', 'Cotilédone (VC)', 'Folha Simples (V1)', 'Trifólios (V2-Vn)', 'Floração (R1-R2)', 'Vagens (R3-R4)', 'Grãos (R5-R6)', 'Maturação (R7-R8)']) 
-      }
-    ],
-    doencas: doencasData.map(d => ({
-      id: d.id,
-      id_cultura: d.id_cultura,
-      nome_comum: d.nome_comum,
-      nome_cientifico: d.nome_cientifico,
-      sintomas: d.sintomas,
-      nivel_severidade: d.nivel_severidade,
-      causa: getCausaByNomeCientifico(d.nome_cientifico)
-    })),
-    defensivos: defensivosData.map(def => ({
-      id: def.id,
-      nome_comercial: def.nome_comercial,
-      ingrediente_ativo: def.ingrediente_ativo,
-      classe: def.classe,
-      fabricante: def.fabricante,
-      grupo_quimico_frac: def.grupo_quimico_frac,
-      bula_resumida: JSON.stringify(def.bula_resumida)
-    })),
-    doenca_defensivo: doencaDefensivoData.map(rel => ({
-      id_doenca: rel.doenca_id,
-      id_defensivo: rel.defensivo_id,
-      dosagem_recomendada: rel.dosagem_recomendada,
-      carencia_dias: rel.carencia_dias,
-      max_aplicacoes_ciclo: rel.max_aplicacoes_ciclo ?? 0
-    })),
-    fila_diagnosticos: [],
-    fila_feedbacks: [],
-    fila_slm_logs: [],
-    sync_metadata: []
-  };
-
-  async execute(sql: string, params: any[] = []): Promise<QueryResult> {
-    console.log(`[WebDB] Executing: ${sql}`, params);
-    const sqlClean = sql.trim().replace(/\s+/g, ' ').toLowerCase();
-
-    // SELECT value FROM sync_metadata WHERE key = ?
-    if (sqlClean.startsWith('select value from sync_metadata')) {
-      const row = this.tables.sync_metadata.find((r) => r.key === params[0]);
-      const arr = row ? [{ value: row.value }] : [];
-      return {
-        rows: { _array: arr, length: arr.length, item: (idx: number) => arr[idx] },
-        rowsAffected: 0,
-      };
-    }
-
-    // 1. SELECT * FROM TABLE (com filtros simples)
-    if (sqlClean.startsWith('select * from')) {
-      const match = sqlClean.match(/select \* from (\w+)/);
-      const tableName = match ? match[1] : '';
-      let data = this.tables[tableName] || [];
-
-      if (sqlClean.includes('where id = ?')) {
-        data = data.filter(d => d.id === params[0]);
-      }
-      if (sqlClean.includes('where id_cultura = ?')) {
-        data = data.filter(d => d.id_cultura === params[0]);
-      }
-      if (sqlClean.includes('where local_id = ?')) {
-        data = data.filter(d => d.local_id === params[0]);
-      }
-      if (sqlClean.includes('where diagnostic_local_id = ?')) {
-        data = data.filter(d => d.diagnostic_local_id === params[0]);
-      }
-      if (sqlClean.includes('where sync_status = ?') || sqlClean.includes("where sync_status = 'pending'")) {
-        const status = params[0] || 'PENDING';
-        data = data.filter(d => d.sync_status === status);
-      }
-      if (sqlClean.includes('where session_id = ?')) {
-        data = data.filter(d => d.session_id === params[0]);
-      }
-
-      const rowsArray = JSON.parse(JSON.stringify(data));
-      return {
-        rows: {
-          _array: rowsArray,
-          length: rowsArray.length,
-          item: (idx: number) => rowsArray[idx]
-        },
-        rowsAffected: 0
-      };
-    }
-
-    // 2. INSERT (OR REPLACE) genérico — mapeia colunas declaradas para params; upsert pela 1ª coluna
-    const insMatch = sqlClean.match(/^insert (?:or replace )?into (\w+)\s*\(([^)]+)\) values/);
-    if (insMatch) {
-      const tableName = insMatch[1];
-      const cols = insMatch[2].split(',').map((c) => c.trim());
-      const dataList = this.tables[tableName];
-      if (dataList) {
-        const rec: any = {};
-        cols.forEach((c, i) => { rec[c] = params[i]; });
-        // Defaults das filas (igual ao DDL nativo)
-        if (!('timestamp' in rec) && (tableName === 'fila_diagnosticos' || tableName === 'fila_feedbacks')) {
-          rec.timestamp = new Date().toISOString();
-        }
-        const keyCol = cols[0];
-        const idx = dataList.findIndex((d) => d[keyCol] === rec[keyCol]);
-        if (idx >= 0) {
-          dataList[idx] = { ...dataList[idx], ...rec };
-        } else {
-          dataList.push(rec);
-        }
-        return {
-          rows: { _array: [], length: 0, item: () => null },
-          rowsAffected: 1,
-          insertId: 1,
-        };
-      }
-    }
-
-    // 3. UPDATE genérico — todos os SETs do app usam apenas `col = ?` e WHERE de chave única
-    const updMatch = sqlClean.match(/^update (\w+) set (.+?) where (\w+) = \?;?$/);
-    if (updMatch) {
-      const tableName = updMatch[1];
-      const setCols = updMatch[2].split(',').map((s) => s.trim().split('=')[0].trim());
-      const keyCol = updMatch[3];
-      const dataList = this.tables[tableName];
-      if (dataList) {
-        const keyVal = params[params.length - 1];
-        const item = dataList.find((d) => d[keyCol] === keyVal);
-        if (item) {
-          setCols.forEach((c, i) => { item[c] = params[i]; });
-        }
-        return {
-          rows: { _array: [], length: 0, item: () => null },
-          rowsAffected: item ? 1 : 0,
-        };
-      }
-    }
-
-    // 4. DELETE genérico (com ou sem WHERE de chave única)
-    const delMatch = sqlClean.match(/^delete from (\w+)(?: where (\w+) = \?)?;?$/);
-    if (delMatch) {
-      const tableName = delMatch[1];
-      const keyCol = delMatch[2];
-      const dataList = this.tables[tableName];
-      if (dataList) {
-        if (keyCol) {
-          this.tables[tableName] = dataList.filter((d) => d[keyCol] !== params[0]);
-        } else {
-          this.tables[tableName] = [];
-        }
-        return {
-          rows: { _array: [], length: 0, item: () => null },
-          rowsAffected: 1,
-        };
-      }
-    }
-
-    // Retorno genérico de sucesso vazio (ex. PRAGMA)
-    return {
-      rows: {
-        _array: [],
-        length: 0,
-        item: () => null
-      },
-      rowsAffected: 0
-    };
-  }
-}
-
-// -------------------------------------------------------------
 // Driver Nativo (op-sqlite)
 // -------------------------------------------------------------
 let nativeDb: any = null;
@@ -238,7 +64,18 @@ class NativeDatabaseDriver implements IDatabaseDriver {
 // -------------------------------------------------------------
 // Inicialização do Driver de Banco de Dados Unificado
 // -------------------------------------------------------------
-export let dbDriver: IDatabaseDriver = new WebDatabaseDriver();
+/**
+ * Sem o target web não existe driver de fallback. Antes de initDatabase() o
+ * banco precisa falhar alto — devolver sucesso vazio esconderia bug de ordem
+ * de inicialização.
+ */
+class UninitializedDriver implements IDatabaseDriver {
+  async execute(): Promise<QueryResult> {
+    throw new Error('Banco local não inicializado. Chame initDatabase() antes.');
+  }
+}
+
+export let dbDriver: IDatabaseDriver = new UninitializedDriver();
 let initPromise: Promise<IDatabaseDriver> | null = null;
 
 export async function initDatabase(): Promise<IDatabaseDriver> {
@@ -247,12 +84,6 @@ export async function initDatabase(): Promise<IDatabaseDriver> {
   }
 
   initPromise = (async () => {
-    if (Platform.OS === 'web') {
-      console.log('[Database] Web environment detected. Using mock memory database.');
-      dbDriver = new WebDatabaseDriver();
-      return dbDriver;
-    }
-
     try {
       const { open, isSQLCipher } = require('@op-engineering/op-sqlite');
 
