@@ -18,8 +18,12 @@ export interface ChatMessage {
 export interface DiagnosticContext {
   cultura?: string;
   doenca_identificada?: string;
+  /** id no catálogo, ou 'Saudável' / 'Fitotoxicidade'. É por ele que o contexto é construído. */
+  doenca_id?: string | null;
   confianca_visao?: number;
   image_s3_key?: string;
+  /** local_id em fila_diagnosticos; a sessão de conversa aponta para ele. */
+  diagnostic_local_id?: string;
 }
 
 interface ChatState {

@@ -34,7 +34,8 @@ export async function queueDiagnosisFeedback(input: QueueFeedbackInput): Promise
 export function buildDiagnosticChatContext(
   inference: InferenceResult,
   diseaseName: string | null | undefined,
-  imageS3Key?: string | null
+  imageS3Key?: string | null,
+  diagnosticLocalId?: string | null
 ): DiagnosticContext {
   const specialName =
     inference.diseaseId === 'Saudável'
@@ -44,8 +45,10 @@ export function buildDiagnosticChatContext(
         : null;
   return {
     doenca_identificada: diseaseName ?? specialName ?? undefined,
+    doenca_id: inference.diseaseId,
     cultura: 'Soja',
     confianca_visao: inference.confidence,
     image_s3_key: imageS3Key ?? undefined,
+    diagnostic_local_id: diagnosticLocalId ?? undefined,
   };
 }
