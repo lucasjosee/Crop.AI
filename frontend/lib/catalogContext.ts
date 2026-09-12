@@ -3,12 +3,14 @@ import { dbDriver } from '../db/sqlite';
 /**
  * Orçamento do contexto. A SLM roda com n_ctx: 2048; precisa sobrar para o
  * prompt de sistema (~100 tokens), 10 mensagens de histórico (~600) e 512 de
- * resposta. Três defensivos com campos de 300 caracteres dão ~1.500 caracteres,
- * na casa de 400–500 tokens. A LLM aguentaria mais, mas o ponto é grounding
- * idêntico nos dois motores.
+ * resposta. Pior caso aqui: 3 defensivos × 2 campos de bula × 200 caracteres
+ * = 1.200 de bula, mais ~500 de cabeçalho e linhas fixas ≈ 1.700 caracteres —
+ * verificado por teste (≤ 2.000). Português tokeniza pior que inglês, então a
+ * folga importa. A LLM aguentaria mais, mas o ponto é grounding idêntico nos
+ * dois motores.
  */
 export const MAX_DEFENSIVOS = 3;
-export const MAX_FIELD_CHARS = 300;
+export const MAX_FIELD_CHARS = 200;
 
 const SAUDAVEL = 'Planta saudável. Nenhum tratamento necessário.';
 const FITOTOXICIDADE =

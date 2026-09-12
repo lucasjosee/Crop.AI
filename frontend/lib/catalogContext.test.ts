@@ -119,4 +119,22 @@ describe('buildCatalogContext', () => {
     mocks.execute.mockResolvedValueOnce(rows([]));
     expect(await buildCatalogContext('uuid-inexistente')).toBe('');
   });
+
+  it('no pior caso (3 defensivos com todos os campos no teto) a saída cabe em 2.000 caracteres', async () => {
+    const teto = 'x'.repeat(MAX_FIELD_CHARS + 500);
+    const pior = (n: number) =>
+      defensivo(n, {
+        nome_comercial: 'Nome Comercial Bem Comprido Número ' + n,
+        ingrediente_ativo: 'ingrediente ativo composto de vários nomes ' + n,
+        dosagem_recomendada: '1.500 mL/ha em duas aplicações',
+        bula_resumida: JSON.stringify({ modo_de_acao: teto, epoca_aplicacao: teto }),
+      });
+    mocks.execute.mockResolvedValueOnce(rows([pior(1), pior(2), pior(3)]));
+
+    const ctx = await buildCatalogContext('uuid-ferrugem');
+
+    // Orçamento: a SLM tem n_ctx 2048 e ainda precisa de prompt de sistema,
+    // 10 mensagens de histórico e 512 tokens de resposta.
+    expect(ctx.length).toBeLessThanOrEqual(2000);
+  });
 });
