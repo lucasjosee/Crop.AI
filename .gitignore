@@ -154,3 +154,6 @@ env/
 # Documentação — mantida fora do repositório, em ../CropAI-docs
 Documentação/
 docs/
+
+# workspace de execução de planos (ledger, briefs, reviews) — scratch, nunca versionar
+.superpowers/
