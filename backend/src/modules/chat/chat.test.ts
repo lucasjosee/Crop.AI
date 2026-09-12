@@ -4,39 +4,24 @@ import { LLMProvider, LLMMessage, StreamCallbacks } from './providers/llm.provid
 
 // Mock LLM Provider that returns predictable chunks
 class MockLLMProvider implements LLMProvider {
+  lastSystemPrompt = '';
+
   async analyzeImage(): Promise<string> {
     return '{}';
   }
 
   async stream(
-    _systemPrompt: string,
+    systemPrompt: string,
     _history: LLMMessage[],
     userMessage: string,
     callbacks: StreamCallbacks
   ): Promise<void> {
+    this.lastSystemPrompt = systemPrompt;
     await callbacks.onChunk('Resposta ');
     await callbacks.onChunk('de teste.');
     callbacks.onDone(10);
   }
 }
-
-// Mock the Drizzle db module
-vi.mock('../../db', () => ({
-  db: {
-    query: {
-      doencas: {
-        findFirst: vi.fn(),
-      },
-    },
-    select: vi.fn(() => ({
-      from: vi.fn(() => ({
-        innerJoin: vi.fn(() => ({
-          where: vi.fn(() => Promise.resolve([])),
-        })),
-      })),
-    })),
-  },
-}));
 
 describe('ChatService', () => {
   let service: ChatService;
@@ -65,73 +50,57 @@ describe('ChatService', () => {
     expect(tokensUsed).toBe(10);
   });
 
-  it('should build empty context when no disease in request', async () => {
-    const { db } = await import('../../db');
-    const chunks: string[] = [];
+  it('injeta o catalog_context pronto no prompt de sistema, sem consultar o banco', async () => {
+    const provider = new MockLLMProvider();
+    const service = new ChatService(provider);
 
     await service.stream(
-      { session_id: '00000000-0000-0000-0000-000000000002', message: 'Oi', history: [] },
-      { sub: 'user-123', role: 'PRODUTOR' },
       {
-        onChunk: async (chunk) => { chunks.push(chunk); },
-        onDone: () => {},
-      }
+        session_id: '00000000-0000-4000-8000-000000000001',
+        message: 'Qual a dose?',
+        history: [],
+        catalog_context: 'Doença: Ferrugem Asiática\nDefensivos indicados:\n1. Produto X',
+      },
+      { sub: 'user-1', role: 'PRODUTOR' },
+      { onChunk: async () => {}, onDone: () => {} }
     );
 
-    // No disease in request → findFirst should NOT be called
-    expect(db.query.doencas.findFirst).not.toHaveBeenCalled();
-    expect(chunks.length).toBeGreaterThan(0);
+    const systemPrompt = provider.lastSystemPrompt;
+    expect(systemPrompt).toContain('[Contexto do Catálogo]');
+    expect(systemPrompt).toContain('Doença: Ferrugem Asiática');
+    expect(systemPrompt).toContain('1. Produto X');
   });
 
-  it('should inject disease context when doenca_identificada is provided', async () => {
-    const { db } = await import('../../db');
-    const mockDoenca = {
-      id: 'doenca-uuid-001',
-      nomeComum: 'Ferrugem Asiática',
-      nomeCientifico: 'Phakopsora pachyrhizi',
-      sintomas: 'Pústulas na face abaxial das folhas',
-      nivelSeveridade: 4,
-    };
-
-    vi.mocked(db.query.doencas.findFirst).mockResolvedValue(mockDoenca as any);
-    vi.mocked(db.select).mockReturnValue({
-      from: vi.fn(() => ({
-        innerJoin: vi.fn(() => ({
-          where: vi.fn(() => Promise.resolve([
-            {
-              nomeComercial: 'Priori Xtra',
-              ingredienteAtivo: 'Azoxistrobina + Ciproconazol',
-              dosagemRecomendada: '300ml/ha',
-              carenciaDias: 30,
-            },
-          ])),
-        })),
-      })),
-    } as any);
-
-    const systemPromptCapture: string[] = [];
-    const originalStream = mockProvider.stream.bind(mockProvider);
-    mockProvider.stream = async (systemPrompt, history, userMessage, callbacks) => {
-      systemPromptCapture.push(systemPrompt);
-      return originalStream(systemPrompt, history, userMessage, callbacks);
-    };
+  it('com cv_result, informa ao modelo o achado da visão local', async () => {
+    const provider = new MockLLMProvider();
+    const service = new ChatService(provider);
 
     await service.stream(
       {
-        session_id: '00000000-0000-0000-0000-000000000003',
-        message: 'Qual defensivo usar?',
+        session_id: '00000000-0000-4000-8000-000000000001',
+        message: 'O que é isso?',
         history: [],
-        context: { doenca_identificada: 'Ferrugem Asiática', cultura: 'Soja', confianca_visao: 0.92 },
+        catalog_context: 'Doença: Ferrugem Asiática',
+        cv_result: { doenca_id: '00000000-0000-4000-8000-000000000010', doenca_nome: 'Ferrugem Asiática', confianca: 0.92, modelo_usado: 'tflite' },
       },
-      { sub: 'user-123', role: 'PRODUTOR' },
-      {
-        onChunk: async () => {},
-        onDone: () => {},
-      }
+      { sub: 'user-1', role: 'PRODUTOR' },
+      { onChunk: async () => {}, onDone: () => {} }
     );
 
-    expect(systemPromptCapture[0]).toContain('Ferrugem Asiática');
-    expect(systemPromptCapture[0]).toContain('Priori Xtra');
-    expect(systemPromptCapture[0]).toContain('300ml/ha');
+    expect(provider.lastSystemPrompt).toContain('O modelo de visão local identificou Ferrugem Asiática com 92% de confiança.');
+  });
+
+  it('sem catalog_context nem cv_result, usa só o prompt base', async () => {
+    const provider = new MockLLMProvider();
+    const service = new ChatService(provider);
+
+    await service.stream(
+      { session_id: '00000000-0000-4000-8000-000000000001', message: 'Oi', history: [] },
+      { sub: 'user-1', role: 'PRODUTOR' },
+      { onChunk: async () => {}, onDone: () => {} }
+    );
+
+    expect(provider.lastSystemPrompt).not.toContain('[Contexto do Catálogo]');
+    expect(provider.lastSystemPrompt).not.toContain('modelo de visão local');
   });
 });
