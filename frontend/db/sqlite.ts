@@ -452,7 +452,9 @@ export async function runMigrationsAndSeed(driver: IDatabaseDriver) {
       } catch {
         interactions = [];
       }
-      if (interactions.length === 0) continue;
+      // JSON válido que não é array ("{}", "null", "42") cai na mesma regra de
+      // "sem interações": pular, nunca abortar a migração do aparelho inteiro.
+      if (!Array.isArray(interactions) || interactions.length === 0) continue;
 
       const startedAt: string = row.started_at || new Date().toISOString();
       const title = String(interactions[0].prompt ?? 'Conversa').slice(0, 60);

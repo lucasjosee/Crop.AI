@@ -115,4 +115,25 @@ describe('migração v7 — conversas persistidas', () => {
 
     expect(sql().some((s) => s.includes('INSERT OR IGNORE INTO chat_sessions'))).toBe(false);
   });
+
+  it.each([
+    ['objeto', '{}'],
+    ['null', 'null'],
+    ['número', '42'],
+  ])('interactions_json com JSON válido que não é array (%s) é ignorado sem abortar a migração', async (_, json) => {
+    const naoArray = {
+      session_id: '33333333-3333-4333-8333-333333333333',
+      started_at: '2026-06-10T08:00:00.000Z',
+      model_version: 'x',
+      interactions_json: json,
+      sync_status: 'PENDING',
+      retry_count: 0,
+    };
+    const { driver, sql } = recordingDriver(6, [['SELECT * FROM fila_slm_logs', [naoArray]]]);
+
+    await expect(runMigrationsAndSeed(driver as never)).resolves.toBeUndefined();
+
+    expect(sql().some((s) => s.includes('INSERT OR IGNORE INTO chat_sessions'))).toBe(false);
+    expect(sql()).toContain('PRAGMA user_version = 7;');
+  });
 });
