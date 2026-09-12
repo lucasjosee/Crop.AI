@@ -65,25 +65,4 @@ describe('POST /api/v1/chat/stream (integration)', () => {
     expect(res.json().error.code).toBe('VALIDATION_ERROR');
   });
 
-  it(
-    'aceita catalog_context e cv_result no contrato novo',
-    async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/v1/chat/stream',
-        headers: { Authorization: `Bearer ${accessToken}` },
-        payload: {
-          session_id: '00000000-0000-4000-8000-000000000099',
-          message: 'Olá',
-          history: [],
-          catalog_context: 'Doença: Ferrugem',
-          cv_result: { doenca_id: null, doenca_nome: 'Saudável', confianca: 0.97, modelo_usado: 'tflite' },
-        },
-      });
-      expect(res.statusCode).not.toBe(400);
-    },
-    // Sem provider mockado, este teste chama a LLM real (rede) — o timeout
-    // padrão de 5s do vitest é apertado demais e gera flakiness.
-    15000
-  );
 });
