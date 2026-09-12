@@ -23,7 +23,6 @@
     "jpeg-js": "^0.4.4",
     "llama.rn": "^0.12.4",
     "react": "19.2.3",
-    "react-dom": "19.2.3",
     "react-native": "0.85.3",
     "react-native-fast-tflite": "^3.0.1",
     "react-native-safe-area-context": "~5.7.0",
@@ -31,7 +30,6 @@
     "react-native-sse": "^1.2.1",
     "react-native-toast-message": "^2.3.3",
     "react-native-vision-camera": "^5.0.11",
-    "react-native-web": "^0.21.2",
     "zod": "^4.4.3",
     "zustand": "^5.0.13"
   },
@@ -45,11 +43,9 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit",
-    "build:web": "expo export --platform web --output-dir dist-ci"
+    "lint": "tsc --noEmit"
   },
   "op-sqlite": {
     "sqlcipher": true

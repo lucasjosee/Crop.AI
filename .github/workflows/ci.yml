@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   frontend:
-    name: Frontend — static checks, tests and web export
+    name: Frontend — static checks and tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -28,7 +28,6 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
-      - run: npm run build:web
 
   backend:
     name: Backend — static checks, tests and build
