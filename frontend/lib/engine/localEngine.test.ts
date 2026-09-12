@@ -146,6 +146,13 @@ describe('LocalEngine', () => {
       await vi.waitFor(() => expect(cb.onError).toHaveBeenCalledWith('UNKNOWN'));
     });
 
+    it('propaga MODEL_NOT_LOADED quando a SLM rejeita com esse erro', async () => {
+      mocks.slmChat.mockRejectedValue(new Error('MODEL_NOT_LOADED'));
+      const cb = callbacks();
+      engine.respond({ sessionId: 's', history: [], userMessage: 'oi', catalogContext: '' }, cb, new AbortController().signal);
+      await vi.waitFor(() => expect(cb.onError).toHaveBeenCalledWith('MODEL_NOT_LOADED'));
+    });
+
     it('release() descarrega e volta a não pronto', async () => {
       await engine.release();
       expect(mocks.unloadSlmModel).toHaveBeenCalled();

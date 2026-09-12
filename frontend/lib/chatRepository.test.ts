@@ -11,12 +11,13 @@ vi.mock('expo-crypto', () => ({ randomUUID: mocks.uuid }));
 import {
   appendMessage,
   createSession,
-  findUnansweredPhotoMessage,
+  findUnansweredUserMessage,
   getSession,
   getSessionDiseaseId,
   listMapSessions,
   listMessages,
   softDeleteSession,
+  updateMessageAttachment,
 } from './chatRepository';
 
 function rows(list: Array<Record<string, unknown>>) {
@@ -99,26 +100,42 @@ describe('chatRepository', () => {
     expect(mocks.execute.mock.calls[0][0]).toContain('JOIN fila_diagnosticos');
   });
 
-  it('findUnansweredPhotoMessage devolve a última mensagem se for do usuário com foto', async () => {
+  it('findUnansweredUserMessage devolve a última mensagem se for do usuário com foto', async () => {
     mocks.execute.mockResolvedValueOnce(rows([
       { id: 'm9', session_id: 's1', role: 'user', content: '', source: null,
         attachment_json: JSON.stringify({ imageUri: 'file:///f.jpg', cvResult: { diseaseId: 'x', confidence: 0.9, inferenceTimeMs: 40, modelUsed: 'm' } }),
         latency_ms: null, created_at: '2026-09-12T10:00:00.000Z' },
     ]));
-    const found = await findUnansweredPhotoMessage('s1');
+    const found = await findUnansweredUserMessage('s1');
     expect(found?.id).toBe('m9');
   });
 
-  it('findUnansweredPhotoMessage devolve null se a última é do assistente ou não tem foto', async () => {
-    mocks.execute.mockResolvedValueOnce(rows([
-      { id: 'm9', session_id: 's1', role: 'assistant', content: 'x', source: 'CLOUD_LLM', attachment_json: null, latency_ms: 1, created_at: 'z' },
-    ]));
-    expect(await findUnansweredPhotoMessage('s1')).toBeNull();
-
+  it('findUnansweredUserMessage devolve a última mensagem se for do usuário sem foto', async () => {
     mocks.execute.mockResolvedValueOnce(rows([
       { id: 'm9', session_id: 's1', role: 'user', content: 'oi', source: null, attachment_json: null, latency_ms: null, created_at: 'z' },
     ]));
-    expect(await findUnansweredPhotoMessage('s1')).toBeNull();
+    const found = await findUnansweredUserMessage('s1');
+    expect(found?.id).toBe('m9');
+  });
+
+  it('findUnansweredUserMessage devolve null se a última é do assistente', async () => {
+    mocks.execute.mockResolvedValueOnce(rows([
+      { id: 'm9', session_id: 's1', role: 'assistant', content: 'x', source: 'CLOUD_LLM', attachment_json: null, latency_ms: 1, created_at: 'z' },
+    ]));
+    expect(await findUnansweredUserMessage('s1')).toBeNull();
+  });
+
+  it('updateMessageAttachment grava o attachment serializado na mensagem', async () => {
+    const attachment = {
+      imageUri: 'file:///f.jpg',
+      imageS3Key: 'diagnosticos/u/x.jpg',
+      cvResult: { diseaseId: 'x', confidence: 0.9, inferenceTimeMs: 40, modelUsed: 'm' },
+    };
+    await updateMessageAttachment('m1', attachment);
+
+    const [sql, params] = mocks.execute.mock.calls[0] as unknown as [string, unknown[]];
+    expect(sql).toContain('UPDATE chat_messages SET attachment_json');
+    expect(params).toEqual([JSON.stringify(attachment), 'm1']);
   });
 
   it('listMapSessions faz o join com fila_diagnosticos e exclui sessões apagadas ou sem coordenada', async () => {

@@ -32,9 +32,13 @@ export function refreshAccessToken(): Promise<string> {
   if (refreshInFlight) return refreshInFlight;
 
   refreshInFlight = (async () => {
-    // import dinâmico preguiçoso evita o ciclo api.ts <-> useAuthStore.ts
-    const { useAuthStore } = await import('../store/useAuthStore');
+    // Declarado fora do try para continuar acessível no catch; só fica
+    // undefined se o próprio import dinâmico rejeitar (inalcançável hoje —
+    // módulo local, já no bundle).
+    let useAuthStore: (typeof import('../store/useAuthStore'))['useAuthStore'] | undefined;
     try {
+      // import dinâmico preguiçoso evita o ciclo api.ts <-> useAuthStore.ts
+      ({ useAuthStore } = await import('../store/useAuthStore'));
       const refreshToken = await secureStorage.getItem('refresh_token');
       if (!refreshToken) {
         throw new Error('Refresh token não encontrado no Secure Store local.');
@@ -45,7 +49,7 @@ export function refreshAccessToken(): Promise<string> {
       return access_token as string;
     } catch (error) {
       console.warn('[API] Falha na rotação do refresh token. Forçando logout.');
-      await useAuthStore.getState().logout();
+      await useAuthStore?.getState().logout();
       throw error;
     } finally {
       refreshInFlight = null;

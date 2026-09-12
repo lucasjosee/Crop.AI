@@ -60,4 +60,12 @@ describe('refreshAccessToken', () => {
     expect(mocks.logout).toHaveBeenCalledTimes(1);
     expect(api.post).not.toHaveBeenCalled();
   });
+
+  it('libera o mutex mesmo se a rotação falhar, permitindo nova tentativa depois', async () => {
+    vi.spyOn(api, 'post').mockRejectedValueOnce(new Error('boom'));
+    await expect(refreshAccessToken()).rejects.toThrow('boom');
+
+    vi.spyOn(api, 'post').mockResolvedValue({ data: { access_token: 'novo', refresh_token: 'r2' } } as never);
+    await expect(refreshAccessToken()).resolves.toBe('novo');
+  });
 });

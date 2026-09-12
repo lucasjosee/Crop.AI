@@ -16,7 +16,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { engineRouter, type EngineError } from '../../lib/engine';
 import {
   appendMessage,
-  findUnansweredPhotoMessage,
+  findUnansweredUserMessage,
   getSession,
   getSessionDiseaseId,
   listMessages,
@@ -163,8 +163,16 @@ export default function ChatSessionScreen() {
     useChatStore.getState().setActiveSession(sessionId);
     (async () => {
       await reload();
-      const unanswered = await findUnansweredPhotoMessage(sessionId);
-      if (unanswered) void requestResponse(unanswered);
+      const pendente = await findUnansweredUserMessage(sessionId);
+      if (pendente?.attachment) {
+        // Foto: o produtor já pediu a análise ao disparar a câmera — responder
+        // sozinho é o que ele espera, e resolve o app morto no meio da resposta.
+        void requestResponse(pendente);
+      } else if (pendente) {
+        // Texto: re-executar custa tokens e surpreende. Só oferece.
+        setLastFailed(pendente);
+        setChatError('Esta pergunta ficou sem resposta.');
+      }
     })();
     return () => {
       abortRef.current?.abort();

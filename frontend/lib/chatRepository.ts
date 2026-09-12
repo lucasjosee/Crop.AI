@@ -180,15 +180,19 @@ export async function getSessionDiseaseId(sessionId: string): Promise<string | n
   return res.rows.length > 0 ? (res.rows._array[0].doenca_id ?? null) : null;
 }
 
-/** Última mensagem da sessão, se for do usuário e tiver foto sem resposta — gatilho do disparo automático. */
-export async function findUnansweredPhotoMessage(sessionId: string): Promise<ChatMessage | null> {
+/**
+ * Última mensagem da sessão, se for do usuário e ainda não respondida —
+ * com ou sem foto. Quem chama decide o que fazer: foto dispara sozinha
+ * (spec §3.3), texto apenas oferece "gerar resposta".
+ */
+export async function findUnansweredUserMessage(sessionId: string): Promise<ChatMessage | null> {
   const res = await dbDriver.execute(
     'SELECT * FROM chat_messages WHERE session_id = ? ORDER BY created_at DESC LIMIT 1;',
     [sessionId]
   );
   if (res.rows.length === 0) return null;
   const last = toMessage(res.rows._array[0]);
-  return last.role === 'user' && last.attachment ? last : null;
+  return last.role === 'user' ? last : null;
 }
 
 export async function listMapSessions(): Promise<MapSession[]> {
