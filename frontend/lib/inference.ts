@@ -1,4 +1,8 @@
-import { Platform } from 'react-native';
+import { loadTensorflowModel } from 'react-native-fast-tflite';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as jpeg from 'jpeg-js';
+import { Buffer } from 'buffer';
+import modelAsset from '../assets/models/model.tflite';
 
 export interface InferenceResult {
   diseaseId: string;
@@ -50,11 +54,9 @@ export const LABELS_LIST = [
 ];
 
 /**
- * Executes a simulated or real local AI inference on a plant image.
- * Uses react-native-fast-tflite on native devices to load and execute model.tflite, with a safe
- * native fallback if the platform does not support loading the model in DEV or lacks GPU resources.
- * On web, it uses a keyword-based classifier or weighted probability mock.
- * 
+ * Executes a real local AI inference on a plant image using react-native-fast-tflite
+ * to load and run model.tflite on the device.
+ *
  * @param imageUri Image source URI (local file path or data URI).
  * @param forcedMode Optional override to force a specific result (useful for testing and debug controls).
  */
@@ -73,94 +75,15 @@ export async function runImageInference(
       diseaseId: forcedMode,
       confidence: parseFloat((0.85 + Math.random() * 0.14).toFixed(2)),
       inferenceTimeMs: Date.now() - startTime,
-      modelUsed: Platform.OS === 'web' ? 'tflite_mock_web_forced_v1.0' : 'tflite_mock_mobile_forced_v1.0',
+      modelUsed: 'tflite_mock_mobile_forced_v1.0',
     };
   }
 
-  // 2. Web Simulation Flow
-  if (Platform.OS === 'web') {
-    await new Promise((resolve) => setTimeout(resolve, 350)); // Simulates processing delay
-
-    const lowerUri = imageUri.toLowerCase();
-    let label = 'Saudável';
-    let confidence = 0.95;
-
-    // Check if filename contains keywords for deterministic manual testing
-    if (lowerUri.includes('ferrugem') || lowerUri.includes('rust')) {
-      label = 'Ferrugem';
-      confidence = 0.92;
-    } else if (lowerUri.includes('mancha') || lowerUri.includes('target') || lowerUri.includes('alvo')) {
-      label = 'Mancha Alvo';
-      confidence = 0.88;
-    } else if (lowerUri.includes('fito') || lowerUri.includes('phytotox') || lowerUri.includes('toxico') || lowerUri.includes('cobre')) {
-      label = 'Fitotoxicidade de Cobre';
-      confidence = 0.86;
-    } else if (lowerUri.includes('saudavel') || lowerUri.includes('healthy') || lowerUri.includes('limpo')) {
-      label = 'Saudável';
-      confidence = 0.97;
-    } else if (lowerUri.includes('antracnose')) {
-      label = 'Antracnose';
-      confidence = 0.85;
-    } else if (lowerUri.includes('bacteriano')) {
-      label = 'Crestamento Bacteriano';
-      confidence = 0.83;
-    } else if (lowerUri.includes('cercospora')) {
-      label = 'Crestamento Cercospora';
-      confidence = 0.84;
-    } else if (lowerUri.includes('carvao')) {
-      label = 'Falso Carvão';
-      confidence = 0.81;
-    } else if (lowerUri.includes('carijo')) {
-      label = 'Folha Carijo';
-      confidence = 0.82;
-    } else if (lowerUri.includes('mirotecio')) {
-      label = 'Mancha Mirotécio';
-      confidence = 0.80;
-    } else if (lowerUri.includes('olho')) {
-      label = 'Mancha Olho de Rã';
-      confidence = 0.86;
-    } else if (lowerUri.includes('mela')) {
-      label = 'Mela';
-      confidence = 0.87;
-    } else if (lowerUri.includes('mildio')) {
-      label = 'Míldio';
-      confidence = 0.84;
-    } else if (lowerUri.includes('esclerocio') || lowerUri.includes('mofo')) {
-      label = 'Murcha Esclerócio';
-      confidence = 0.89;
-    } else if (lowerUri.includes('oidio')) {
-      label = 'Oídio';
-      confidence = 0.88;
-    } else if (lowerUri.includes('phytophthora')) {
-      label = 'Podridão Phytophthora';
-      confidence = 0.90;
-    } else if (lowerUri.includes('septoria')) {
-      label = 'Septoria';
-      confidence = 0.85;
-    } else {
-      // Standard random weighted distribution mock among all 17 labels
-      label = LABELS_LIST[Math.floor(Math.random() * LABELS_LIST.length)];
-      confidence = parseFloat((0.65 + Math.random() * 0.32).toFixed(2));
-    }
-
-    return {
-      diseaseId: LABELS_MAP[label] || 'Saudável',
-      confidence,
-      inferenceTimeMs: Date.now() - startTime,
-      modelUsed: 'tflite_custom_vision_web_v1.0',
-    };
-  }
-
-  // 3. Native Mobile Flow (Real Computer Vision Pipeline)
+  // 2. Native Mobile Flow (Real Computer Vision Pipeline)
   try {
-    const { loadModel } = require('react-native-fast-tflite');
-    const ImageManipulator = require('expo-image-manipulator');
-    const jpeg = require('jpeg-js');
-
     // A. Load the model.tflite file from assets (cached — loaded once per session)
     if (!_cachedNativeModel) {
-      const modelAsset = require('../assets/models/model.tflite');
-      _cachedNativeModel = await loadModel(modelAsset);
+      _cachedNativeModel = await loadTensorflowModel(modelAsset, []);
       console.log('[Inference] TFLite model loaded and cached for this session.');
     }
     const model = _cachedNativeModel;
@@ -173,7 +96,10 @@ export async function runImageInference(
     );
 
     // C. Preprocessing Step 2: Decode base64 to raw RGBA pixel data
-    const buffer = require('buffer').Buffer.from(manipulated.base64, 'base64');
+    if (!manipulated.base64) {
+      throw new Error('A imagem redimensionada não retornou dados base64.');
+    }
+    const buffer = Buffer.from(manipulated.base64, 'base64');
     const rawImageData = jpeg.decode(buffer, { useTArray: true });
     
     if (!rawImageData || !rawImageData.data) {
