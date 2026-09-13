@@ -33,6 +33,18 @@ export function ensureDiagnosticImageUploaded(
 }
 
 async function uploadDiagnosticImage(input: DiagnosticImageUploadInput): Promise<string> {
+  // O mapa em voo cobre só chamadas concorrentes, e esvazia ao terminar. A
+  // chave durável mora aqui: sem esta leitura, uma resposta do motor que falha
+  // depois de a segunda opinião já ter subido a imagem faz o disparo
+  // automático da próxima abertura subir a foto de novo — segundo PUT pago, e
+  // uma chave diferente da que o servidor já registrou.
+  const gravado = await dbDriver.execute(
+    'SELECT image_s3_key FROM fila_diagnosticos WHERE local_id = ?;',
+    [input.localId]
+  );
+  const chaveGravada = gravado.rows.length > 0 ? gravado.rows._array[0].image_s3_key : null;
+  if (chaveGravada) return chaveGravada;
+
   const contentType = input.imageUri.toLowerCase().endsWith('.png')
     ? 'image/png'
     : 'image/jpeg';

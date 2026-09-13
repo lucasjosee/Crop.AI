@@ -12,7 +12,13 @@ import { api } from './api';
 import { ensureDiagnosticImageUploaded } from './diagnosticImageUploadService';
 
 describe('ensureDiagnosticImageUploaded', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.execute.mockResolvedValue({
+      rows: { _array: [], length: 0, item: () => null },
+      rowsAffected: 1,
+    } as any);
+  });
 
   it('não solicita nova URL quando o diagnóstico já tem image_s3_key', async () => {
     const key = await ensureDiagnosticImageUploaded({
@@ -100,5 +106,24 @@ describe('ensureDiagnosticImageUploaded', () => {
     );
 
     vi.unstubAllGlobals();
+  });
+
+  it('não sobe de novo quando o diagnóstico já tem chave gravada no banco', async () => {
+    mocks.execute.mockResolvedValueOnce({
+      rows: {
+        _array: [{ image_s3_key: 'diagnosticos/user/ja-existe.jpg' }],
+        length: 1,
+        item: () => ({ image_s3_key: 'diagnosticos/user/ja-existe.jpg' }),
+      },
+      rowsAffected: 0,
+    } as any);
+
+    const chave = await ensureDiagnosticImageUploaded({
+      localId: 'local-ja-subido',
+      imageUri: 'blob:leaf',
+    });
+
+    expect(chave).toBe('diagnosticos/user/ja-existe.jpg');
+    expect(api.post).not.toHaveBeenCalled();
   });
 });

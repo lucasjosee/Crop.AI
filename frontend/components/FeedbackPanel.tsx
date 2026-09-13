@@ -63,8 +63,14 @@ export const FeedbackPanel: React.FC<FeedbackPanelProps> = ({
 
     setEnviando(true);
     try {
+      // fila_feedbacks.corrected_doenca_id é FK para doencas(id), então uma
+      // doença fora do catálogo local não cabe ali. O nome na nota é o único
+      // carregador que sobra — e a divergência fora do catálogo é justamente o
+      // caso mais valioso para melhorar os modelos.
       const notaDivergencia =
-        escolha === 'LLM' ? 'Produtor escolheu a opinião do Agrônomo IA.' : '';
+        escolha === 'LLM'
+          ? `Produtor escolheu a opinião do Agrônomo IA${cv.llmDoencaNome ? `: ${cv.llmDoencaNome}` : ''}.`
+          : '';
       await queueDiagnosisFeedback({
         diagnosticLocalId,
         isCorrect: escolha === 'CORRECT',
