@@ -62,6 +62,9 @@ export default function CameraScreen() {
   const [confirmando, setConfirmando] = useState(false);
   const [debugAberto, setDebugAberto] = useState(false);
 
+  /** O obturador só faz sentido quando há permissão E sensor. */
+  const podeCapturar = hasPermission && !!device;
+
   useEffect(() => {
     (async () => {
       try {
@@ -103,6 +106,19 @@ export default function CameraScreen() {
   }, []);
 
   const capturar = useCallback(async () => {
+    // useCameraDevice enumera o hardware sem depender da permissão, então num
+    // aparelho recém-instalado `device` já existe enquanto hasPermission ainda
+    // é false. Sem esta guarda o obturador dispararia capturePhoto num output
+    // que não está ligado a nenhum <Camera> montado, e o produtor veria "erro
+    // de captura" em vez de saber que falta conceder a permissão.
+    if (!hasPermission) {
+      Toast.show({
+        type: 'info',
+        text1: 'Permissão de câmera',
+        text2: 'Conceda a permissão para tirar a foto.',
+      });
+      return;
+    }
     if (!device) {
       Toast.show({ type: 'error', text1: 'Câmera', text2: 'O visor ainda não inicializou.' });
       return;
@@ -125,7 +141,7 @@ export default function CameraScreen() {
       console.error('[Camera] Falha ao capturar do sensor.');
       Toast.show({ type: 'error', text1: 'Erro de captura', text2: 'Não foi possível tirar a foto.' });
     }
-  }, [analisar, device, flash, photoOutput]);
+  }, [analisar, device, flash, hasPermission, photoOutput]);
 
   const escolherDaGaleria = useCallback(async () => {
     try {
@@ -304,9 +320,11 @@ export default function CameraScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.obturador}
+          style={[styles.obturador, !podeCapturar && styles.obturadorDesabilitado]}
           onPress={capturar}
+          disabled={!podeCapturar}
           accessibilityRole="button"
+          accessibilityState={{ disabled: !podeCapturar }}
           accessibilityLabel="Tirar foto para diagnóstico"
         >
           <View style={styles.obturadorInterno}>
@@ -314,7 +332,7 @@ export default function CameraScreen() {
           </View>
         </TouchableOpacity>
 
-        {hasPermission && device ? (
+        {podeCapturar ? (
           <TouchableOpacity
             style={styles.acessorio}
             onPress={() => setFlash((atual) => (atual === 'off' ? 'on' : 'off'))}
@@ -329,7 +347,12 @@ export default function CameraScreen() {
       </View>
 
       <View style={styles.abas}>
-        <View style={styles.abaAtiva} accessibilityRole="tab" accessibilityState={{ selected: true }}>
+        <View
+          style={styles.abaAtiva}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: true }}
+          accessibilityLabel="Câmera, aba atual"
+        >
           <Ionicons name="camera" size={24} color={theme.colors.primary} />
           <Text style={styles.abaRotuloAtivo}>Câmera</Text>
         </View>
@@ -456,6 +479,7 @@ const styles = StyleSheet.create({
   permissaoTexto: { color: theme.colors.textSecondary, fontSize: theme.typography.fontSize.sm, textAlign: 'center', marginTop: 4 },
   controles: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: theme.spacing.xl, paddingVertical: theme.spacing.md },
   acessorio: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.15)' },
+  obturadorDesabilitado: { opacity: 0.4 },
   obturador: { width: 76, height: 76, borderRadius: 38, borderWidth: 4, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   obturadorInterno: { width: 60, height: 60, borderRadius: 30, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
   abas: { flexDirection: 'row', backgroundColor: theme.colors.background, borderTopWidth: 1, borderTopColor: theme.colors.border },
