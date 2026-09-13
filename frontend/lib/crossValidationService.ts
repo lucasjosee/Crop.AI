@@ -106,11 +106,16 @@ export async function markCrossValidationSkipped(
   );
 }
 
+/**
+ * Divergência nunca é ocultada: as duas opiniões aparecem sempre. Isto decide
+ * só qual delas é apresentada como primária — a da LLM apenas quando o CV
+ * local está abaixo de 70% de confiança.
+ */
 export function getCrossValidationPriority(
   cvConfidence: number,
-  result: CrossValidationResult
+  status: CrossValidationStatus
 ): { primary: 'CV' | 'LLM'; showBoth: boolean } {
-  if (result.result_status !== 'DIVERGENT') {
+  if (status !== 'DIVERGENT') {
     return { primary: 'CV', showBoth: false };
   }
   return {

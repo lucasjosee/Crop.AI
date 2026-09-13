@@ -586,7 +586,7 @@ export default function CameraScreen() {
     const isHealthy = inferenceResult.diseaseId === 'Saudável';
     const isPhyto = inferenceResult.diseaseId === 'Fitotoxicidade';
     const crossValidationPriority = crossValidationResult
-      ? getCrossValidationPriority(inferenceResult.confidence, crossValidationResult)
+      ? getCrossValidationPriority(inferenceResult.confidence, crossValidationResult.result_status)
       : null;
 
     // Set severity metrics

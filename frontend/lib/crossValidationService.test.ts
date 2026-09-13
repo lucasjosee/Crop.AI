@@ -100,16 +100,9 @@ describe('crossValidationService', () => {
   });
 
   it('mantém ambas opiniões e só prioriza LLM em divergência com CV abaixo de 70%', () => {
-    const divergent = {
-      result_status: 'DIVERGENT' as const,
-      llm_agrees_with_cv: false,
-      llm_doenca_id: null,
-      llm_doenca_nome: 'Mancha Alvo',
-      llm_observacoes: 'Divergência.',
-      llm_confianca: 0.8,
-    };
-    expect(getCrossValidationPriority(0.69, divergent)).toEqual({ primary: 'LLM', showBoth: true });
-    expect(getCrossValidationPriority(0.7, divergent)).toEqual({ primary: 'CV', showBoth: true });
+    expect(getCrossValidationPriority(0.69, 'DIVERGENT')).toEqual({ primary: 'LLM', showBoth: true });
+    expect(getCrossValidationPriority(0.7, 'DIVERGENT')).toEqual({ primary: 'CV', showBoth: true });
+    expect(getCrossValidationPriority(0.2, 'CONFIRMED')).toEqual({ primary: 'CV', showBoth: false });
   });
 });
 
