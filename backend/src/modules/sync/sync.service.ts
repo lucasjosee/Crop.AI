@@ -134,6 +134,23 @@ export class SyncService {
               ...(!hasServerResult && item.cross_validation ? acceptedCrossValidation : {}),
             })
             .where(eq(diagnosticos.id, existing.id));
+
+          // Mesma religação que os feedbacks têm: a conversa pode ter subido
+          // antes do diagnóstico que a originou. Só escreve onde ainda é nulo,
+          // para nunca sobrescrever um vínculo já resolvido. Precisa estar
+          // aqui também: quando /diagnosis/cross-validate cria a linha antes
+          // do sync completo chegar, o item cai neste ramo, não no de inserção.
+          await db
+            .update(conversas)
+            .set({ diagnosticoId: existing.id })
+            .where(
+              and(
+                eq(conversas.userId, userId),
+                eq(conversas.mobileDiagnosticLocalId, item.local_id),
+                isNull(conversas.diagnosticoId)
+              )
+            );
+
           synced_items.push({ local_id: item.local_id, server_id: existing.id });
           continue;
         }

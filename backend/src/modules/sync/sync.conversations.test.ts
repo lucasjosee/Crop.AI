@@ -305,4 +305,62 @@ describe('POST /api/v1/sync/conversations (integration)', () => {
     const [depois] = await db.select().from(conversas).where(eq(conversas.mobileSessionId, sessionId));
     expect(depois.diagnosticoId).not.toBeNull();
   });
+
+  it('religa a conversa quando o diagnóstico já existia (criado pelo cross-validate) e /sync/diagnostics só o atualiza', async () => {
+    const sessionId = randomUUID();
+    const diagnosticLocalId = randomUUID();
+
+    // A conversa sobe primeiro: nesse instante não existe nenhuma linha em
+    // diagnosticos para esse local_id — nem o cross-validate rodou ainda.
+    await post({
+      conversations: [
+        makeConversation(sessionId, { origin_diagnostic_local_id: diagnosticLocalId }),
+      ],
+    });
+
+    const [antes] = await db.select().from(conversas).where(eq(conversas.mobileSessionId, sessionId));
+    expect(antes.diagnosticoId).toBeNull();
+
+    // O /diagnosis/cross-validate cria a linha (com onConflictDoNothing em
+    // mobile_local_id) antes do /sync/diagnostics processar o item completo —
+    // é isso que faz o item cair no ramo `existing`, não no de inserção.
+    await db.insert(diagnosticos).values({
+      userId,
+      mobileLocalId: diagnosticLocalId,
+      imageS3Key: `diagnosticos/${userId}/${diagnosticLocalId}.jpg`,
+      latitude: null,
+      longitude: null,
+      doencaId,
+      confiancaIa: 0.7,
+      modeloUsado: 'tflite_v1.0',
+      tempoInferenciaMs: 35,
+      crossValidationStatus: 'PENDING',
+      capturedAt: new Date('2026-09-13T07:00:00Z'),
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/sync/diagnostics',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      payload: {
+        diagnostics: [
+          {
+            local_id: diagnosticLocalId,
+            timestamp: '2026-09-13T08:00:00Z',
+            image_s3_key: `diagnosticos/${userId}/${diagnosticLocalId}.jpg`,
+            location: { lat: -23.5, lng: -46.6 },
+            ai_result: {
+              doenca_id: doencaId,
+              confianca: 0.9,
+              modelo_usado: 'tflite_v1.0',
+              tempo_inferencia_ms: 40,
+            },
+          },
+        ],
+      },
+    });
+
+    const [depois] = await db.select().from(conversas).where(eq(conversas.mobileSessionId, sessionId));
+    expect(depois.diagnosticoId).not.toBeNull();
+  });
 });
