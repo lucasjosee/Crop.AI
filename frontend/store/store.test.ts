@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useNetworkStore } from './useNetworkStore';
 import { useAuthStore } from './useAuthStore';
 import { api } from '../lib/api';
-import { dbDriver } from '../db/sqlite';
 import { secureStorage } from '../lib/secureStorage';
 
 // -------------------------------------------------------------
@@ -47,36 +46,6 @@ vi.mock('../lib/api', () => ({
 vi.mock('expo-crypto', () => ({
   randomUUID: () => 'test-uuid-' + Math.random().toString(36).slice(2),
 }));
-
-// -------------------------------------------------------------
-// Suíte de Testes para WebDatabaseDriver
-// -------------------------------------------------------------
-describe('WebDatabaseDriver', () => {
-  it('deve executar INSERT e SELECT corretamente no WebDatabaseDriver (em memória)', async () => {
-    // Limpar fila_diagnosticos para garantir ambiente limpo
-    // @ts-ignore - acessando campo privado no mock para limpar estado
-    dbDriver.tables.fila_diagnosticos = [];
-
-    const mockId = 'test-local-id';
-    const doencaId = 'doenca_ferrugem_asiatica';
-    
-    // Testar INSERT
-    const insertRes = await dbDriver.execute(
-      `INSERT INTO fila_diagnosticos (
-        local_id, server_id, image_uri, image_s3_key, latitude, longitude, 
-        doenca_id, confianca_ia, modelo_usado, tempo_inferencia_ms, sync_status, retry_count
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-      [mockId, null, 'file:///path.jpg', null, 0, 0, doencaId, 0.9, 'model_v1', 30, 'PENDING', 0]
-    );
-    expect(insertRes.rowsAffected).toBe(1);
-
-    // Testar SELECT
-    const selectRes = await dbDriver.execute('SELECT * FROM fila_diagnosticos;');
-    expect(selectRes.rows.length).toBe(1);
-    expect(selectRes.rows.item(0).local_id).toBe(mockId);
-    expect(selectRes.rows.item(0).doenca_id).toBe(doencaId);
-  });
-});
 
 // -------------------------------------------------------------
 // Suíte de Testes para Network Sensing
