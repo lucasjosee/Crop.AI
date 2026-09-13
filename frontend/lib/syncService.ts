@@ -4,13 +4,12 @@ import { syncCatalog } from './catalogSyncService';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { ensureDiagnosticImageUploaded } from './diagnosticImageUploadService';
+import { MAX_RETRIES, CLEANUP_DAYS, type StepResult } from './syncContracts';
 
-export const MAX_RETRIES = 5;
-export const CLEANUP_DAYS = 30;
+export { MAX_RETRIES, CLEANUP_DAYS };
+export type { StepResult };
 
 type QueueRow = Record<string, any>;
-
-export interface StepResult { synced: number; failed: number }
 
 export interface FullSyncResult {
   ran: boolean;
