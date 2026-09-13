@@ -1,7 +1,7 @@
 import { randomUUID } from 'expo-crypto';
 import { dbDriver } from '../db/sqlite';
 import { saveImagePersistently } from './imageHelper';
-import { appendMessage, createSession, type ChatAttachment } from './chatRepository';
+import { appendMessage, createSession, type ChatAttachment, type ChatSession } from './chatRepository';
 import type { InferenceResult } from './inference';
 import type { ConnectionMode } from '../config/network';
 
@@ -66,8 +66,10 @@ export async function startDiagnosisSession(
     ]
   );
 
+  let session: ChatSession | null = null;
+
   try {
-    const session = await createSession({
+    session = await createSession({
       title: input.diseaseName,
       originDiagnosticLocalId: diagnosticLocalId,
     });
@@ -86,14 +88,43 @@ export async function startDiagnosisSession(
 
     return { sessionId: session.id, diagnosticLocalId };
   } catch (error) {
-    // O driver não tem transação. Sem esta compensação, um diagnóstico ficaria
-    // órfão: sincronizaria, gastaria um PUT no S3, e não apareceria em lista
-    // nenhuma — mapa e histórico consultam a partir de chat_sessions.
-    await dbDriver
-      .execute("DELETE FROM fila_diagnosticos WHERE local_id = ? AND sync_status = 'PENDING';", [
-        diagnosticLocalId,
-      ])
-      .catch(() => undefined);
+    await rollbackPartialCreation(session, diagnosticLocalId);
     throw error;
+  }
+}
+
+/**
+ * Desfaz filho antes de pai — a ordem que as FKs exigem.
+ *
+ * O driver não tem transação (cada `execute` já é autocommit), e as duas FKs
+ * envolvidas — `chat_messages.session_id` → `chat_sessions.id` e
+ * `chat_sessions.origin_diagnostic_local_id` → `fila_diagnosticos.local_id` —
+ * estão ligadas por `PRAGMA foreign_keys = ON`, sem `ON DELETE CASCADE`.
+ * Quando `appendMessage` falha, a sessão já está commitada (é a escrita
+ * anterior) e a mensagem pode ou não existir, dependendo de qual das duas
+ * escritas internas dela falhou. Por isso mensagem, sessão e diagnóstico são
+ * sempre tentados nessa ordem, sem checar qual falhou antes: apagar uma linha
+ * que nunca existiu é no-op, mas apagar o pai antes do filho é o que o
+ * SQLite recusa.
+ */
+async function rollbackPartialCreation(
+  session: ChatSession | null,
+  diagnosticLocalId: string
+): Promise<void> {
+  try {
+    if (session) {
+      await dbDriver.execute('DELETE FROM chat_messages WHERE session_id = ?;', [session.id]);
+      await dbDriver.execute('DELETE FROM chat_sessions WHERE id = ?;', [session.id]);
+    }
+    await dbDriver.execute(
+      "DELETE FROM fila_diagnosticos WHERE local_id = ? AND sync_status = 'PENDING';",
+      [diagnosticLocalId]
+    );
+  } catch (erro) {
+    // Continuar engolindo é proposital: quem chamou já tem o erro de causa
+    // raiz, e é ele que deve propagar. O que não pode se repetir é o silêncio
+    // — foi um `.catch(() => undefined)` mudo que deixou esta própria limpeza
+    // ser recusada por violação de FK sem que nenhum log denunciasse.
+    console.warn('[Diagnóstico] Falha ao limpar a criação parcial da conversa.', erro);
   }
 }

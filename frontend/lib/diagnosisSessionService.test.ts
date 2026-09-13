@@ -140,6 +140,24 @@ describe('startDiagnosisSession', () => {
     expect(delParams).toEqual(['id-1']);
   });
 
+  it('a compensação apaga de filho para pai, na ordem que as FKs impõem', async () => {
+    mocks.execute.mockImplementation(async (sql: string) => {
+      if (sql.includes('INSERT INTO chat_messages')) throw new Error('disco cheio');
+      return rows();
+    });
+
+    await expect(startDiagnosisSession(input())).rejects.toThrow('disco cheio');
+
+    const deletes = (mocks.execute.mock.calls as Array<[string, unknown[]]>)
+      .map(([sql]) => sql)
+      .filter((sql) => sql.includes('DELETE'));
+
+    expect(deletes).toHaveLength(3);
+    expect(deletes[0]).toContain('DELETE FROM chat_messages');
+    expect(deletes[1]).toContain('DELETE FROM chat_sessions');
+    expect(deletes[2]).toContain('DELETE FROM fila_diagnosticos');
+  });
+
   it('falha da própria compensação não engole o erro original', async () => {
     mocks.execute.mockImplementation(async (sql: string) => {
       if (sql.includes('INSERT INTO chat_sessions')) throw new Error('sessão falhou');
