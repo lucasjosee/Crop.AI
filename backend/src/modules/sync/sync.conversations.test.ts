@@ -363,4 +363,14 @@ describe('POST /api/v1/sync/conversations (integration)', () => {
     const [depois] = await db.select().from(conversas).where(eq(conversas.mobileSessionId, sessionId));
     expect(depois.diagnosticoId).not.toBeNull();
   });
+
+  it('o endpoint /sync/slm-logs foi aposentado', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/sync/slm-logs',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      payload: { slm_sessions: [] },
+    });
+    expect(res.statusCode).toBe(404);
+  });
 });

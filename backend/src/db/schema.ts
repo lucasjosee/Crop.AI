@@ -217,44 +217,6 @@ export const feedbacksDiagnostico = pgTable(
   ]
 );
 
-// 9. sessoes_slm
-export const sessoesSlm = pgTable(
-  'sessoes_slm',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    userId: uuid('user_id')
-      .references(() => usuarios.id, { onDelete: 'cascade' })
-      .notNull(),
-    mobileSessionId: uuid('mobile_session_id').notNull(),
-    modelVersion: varchar('model_version', { length: 100 }).notNull(),
-    startedAt: timestamp('started_at').notNull(),
-    endedAt: timestamp('ended_at').notNull(),
-    syncedAt: timestamp('synced_at').defaultNow().notNull(),
-  },
-  (table) => [
-    index('idx_sessoes_slm_user_id').on(table.userId),
-  ]
-);
-
-// 10. interacoes_slm
-export const interacoesSlm = pgTable(
-  'interacoes_slm',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    sessaoId: uuid('sessao_id')
-      .references(() => sessoesSlm.id, { onDelete: 'cascade' })
-      .notNull(),
-    prompt: text('prompt').notNull(),
-    response: text('response').notNull(),
-    latencyMs: integer('latency_ms').notNull(),
-    ragUsedDocuments: jsonb('rag_used_documents').default([]).notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => [
-    index('idx_interacoes_slm_sessao_id').on(table.sessaoId),
-  ]
-);
-
 // 9b. conversas — a conversa como unidade, substituindo sessoes_slm
 export const conversas = pgTable(
   'conversas',

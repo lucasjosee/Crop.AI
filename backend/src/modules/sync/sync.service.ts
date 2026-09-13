@@ -4,8 +4,6 @@ import {
   diagnosticos,
   doencas,
   feedbacksDiagnostico,
-  sessoesSlm,
-  interacoesSlm,
   conversas,
   mensagens,
 } from '../../db/schema';
@@ -14,7 +12,6 @@ import {
   conversationItemSchema,
   SyncDiagnosticsInput,
   SyncFeedbackInput,
-  SyncSlmLogsInput,
   SyncConversationsInput,
 } from './sync.schema';
 
@@ -421,49 +418,6 @@ export class SyncService {
       processed_items,
       failed_items,
     };
-  }
-
-  async syncSlmLogs(userId: string, input: SyncSlmLogsInput) {
-    let processed_count = 0;
-
-    for (const session of input.slm_sessions) {
-      const existing = await db.query.sessoesSlm.findFirst({
-        where: and(
-          eq(sessoesSlm.userId, userId),
-          eq(sessoesSlm.mobileSessionId, session.session_id)
-        ),
-      });
-      if (existing) {
-        processed_count += 1;
-        continue;
-      }
-
-      const [inserted] = await db
-        .insert(sessoesSlm)
-        .values({
-          userId,
-          mobileSessionId: session.session_id,
-          modelVersion: session.model_version,
-          startedAt: new Date(session.started_at),
-          endedAt: new Date(session.ended_at ?? session.started_at),
-        })
-        .returning({ id: sessoesSlm.id });
-
-      if (session.interactions.length > 0) {
-        await db.insert(interacoesSlm).values(
-          session.interactions.map((i) => ({
-            sessaoId: inserted.id,
-            prompt: i.prompt,
-            response: i.response,
-            latencyMs: i.latency_ms,
-            ragUsedDocuments: i.rag_used_documents ?? [],
-          }))
-        );
-      }
-      processed_count += 1;
-    }
-
-    return { status: 'success', processed_count };
   }
 }
 
