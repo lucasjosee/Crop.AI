@@ -1,5 +1,10 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { syncDiagnosticsSchema, syncFeedbackSchema, syncSlmLogsSchema } from './sync.schema';
+import {
+  syncDiagnosticsSchema,
+  syncFeedbackSchema,
+  syncSlmLogsSchema,
+  syncConversationsSchema,
+} from './sync.schema';
 import { syncService } from './sync.service';
 
 export const syncController = {
@@ -22,5 +27,12 @@ export const syncController = {
     const user = request.user as { sub: string };
     const result = await syncService.syncSlmLogs(user.sub, body);
     return reply.code(202).send(result);
+  },
+
+  async conversations(request: FastifyRequest, reply: FastifyReply) {
+    const body = syncConversationsSchema.parse(request.body);
+    const user = request.user as { sub: string };
+    const result = await syncService.syncConversations(user.sub, body);
+    return reply.code(200).send(result);
   },
 };

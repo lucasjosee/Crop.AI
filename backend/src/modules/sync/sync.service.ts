@@ -6,12 +6,16 @@ import {
   feedbacksDiagnostico,
   sessoesSlm,
   interacoesSlm,
+  conversas,
+  mensagens,
 } from '../../db/schema';
 import {
   diagnosticItemSchema,
+  conversationItemSchema,
   SyncDiagnosticsInput,
   SyncFeedbackInput,
   SyncSlmLogsInput,
+  SyncConversationsInput,
 } from './sync.schema';
 
 interface SyncedItem { local_id: string; server_id: string }
@@ -23,6 +27,12 @@ const TERMINAL_CV_STATUSES = ['CONFIRMED', 'ENRICHED', 'DIVERGENT'];
 /** Recupera o local_id de um item que não passou na validação, para poder reportá-lo. */
 function extractLocalId(raw: unknown): string {
   const candidate = (raw as { local_id?: unknown } | null)?.local_id;
+  return typeof candidate === 'string' ? candidate : 'desconhecido';
+}
+
+/** Recupera o session_id de um envelope que não passou na validação. */
+function extractSessionId(raw: unknown): string {
+  const candidate = (raw as { session_id?: unknown } | null)?.session_id;
   return typeof candidate === 'string' ? candidate : 'desconhecido';
 }
 
@@ -163,6 +173,115 @@ export class SyncService {
           local_id: item.local_id,
           error_code: 'SYNC_ITEM_ERROR',
           message: err instanceof Error ? err.message : 'Erro desconhecido ao persistir item.',
+        });
+      }
+    }
+
+    return {
+      status: failed_items.length === 0 ? 'success' : 'partial',
+      synced_count: synced_items.length,
+      failed_count: failed_items.length,
+      synced_items,
+      failed_items,
+    };
+  }
+
+  async syncConversations(userId: string, input: SyncConversationsInput) {
+    const synced_items: Array<{ session_id: string; server_id: string }> = [];
+    const failed_items: Array<{ session_id: string; error_code: string; message: string }> = [];
+
+    for (const raw of input.conversations) {
+      const parsed = conversationItemSchema.safeParse(raw);
+      if (!parsed.success) {
+        failed_items.push({
+          session_id: extractSessionId(raw),
+          error_code: 'VALIDATION_ERROR',
+          message: parsed.error.issues
+            .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+            .join('; '),
+        });
+        continue;
+      }
+      const item = parsed.data;
+
+      try {
+        const diagnostico = item.origin_diagnostic_local_id
+          ? await db.query.diagnosticos.findFirst({
+              where: and(
+                eq(diagnosticos.userId, userId),
+                eq(diagnosticos.mobileLocalId, item.origin_diagnostic_local_id)
+              ),
+            })
+          : null;
+
+        const existente = await db.query.conversas.findFirst({
+          where: and(eq(conversas.userId, userId), eq(conversas.mobileSessionId, item.session_id)),
+        });
+
+        let conversaId: string;
+        if (existente) {
+          conversaId = existente.id;
+          const patch: Record<string, unknown> = {};
+          if (new Date(item.updated_at) >= existente.atualizadaEm) {
+            patch.titulo = item.title;
+            patch.atualizadaEm = new Date(item.updated_at);
+          }
+          if (item.deleted_at && !existente.apagadaEm) {
+            patch.apagadaEm = new Date(item.deleted_at);
+          }
+          if (diagnostico && !existente.diagnosticoId) {
+            patch.diagnosticoId = diagnostico.id;
+          }
+          if (item.origin_diagnostic_local_id && !existente.mobileDiagnosticLocalId) {
+            patch.mobileDiagnosticLocalId = item.origin_diagnostic_local_id;
+          }
+          // set({}) faz o drizzle lançar; nada mudou é caminho normal aqui.
+          if (Object.keys(patch).length > 0) {
+            await db.update(conversas).set(patch).where(eq(conversas.id, existente.id));
+          }
+        } else {
+          const [inserida] = await db
+            .insert(conversas)
+            .values({
+              userId,
+              mobileSessionId: item.session_id,
+              titulo: item.title,
+              diagnosticoId: diagnostico?.id ?? null,
+              mobileDiagnosticLocalId: item.origin_diagnostic_local_id ?? null,
+              criadaEm: new Date(item.created_at),
+              atualizadaEm: new Date(item.updated_at),
+              apagadaEm: item.deleted_at ? new Date(item.deleted_at) : null,
+            })
+            .returning({ id: conversas.id });
+          conversaId = inserida.id;
+        }
+
+        if (item.messages.length > 0) {
+          await db
+            .insert(mensagens)
+            .values(
+              item.messages.map((m) => ({
+                conversaId,
+                mobileMessageId: m.message_id,
+                papel: m.role,
+                conteudo: m.content,
+                origem: m.source ?? null,
+                anexoS3Key: m.attachment_s3_key ?? null,
+                latencyMs: m.latency_ms ?? null,
+                criadaEm: new Date(m.created_at),
+              }))
+            )
+            .onConflictDoNothing({
+              target: [mensagens.conversaId, mensagens.mobileMessageId],
+            });
+        }
+
+        synced_items.push({ session_id: item.session_id, server_id: conversaId });
+      } catch (err) {
+        failed_items.push({
+          session_id: item.session_id,
+          error_code: 'SYNC_ITEM_ERROR',
+          message: err instanceof Error ? err.message : 'Erro desconhecido ao persistir conversa.',
         });
       }
     }
