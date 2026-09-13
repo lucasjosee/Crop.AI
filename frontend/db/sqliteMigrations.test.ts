@@ -137,3 +137,29 @@ describe('migração v7 — conversas persistidas', () => {
     expect(sql()).toContain('PRAGMA user_version = 7;');
   });
 });
+
+describe('migração v8 — fila de conversas assume o sync', () => {
+  it('v8 acrescenta o contador de segunda opinião e dropa a fila de logs SLM', async () => {
+    const { driver, sql } = recordingDriver(7);
+
+    await runMigrationsAndSeed(driver as never);
+
+    expect(
+      sql().some(
+        (s) =>
+          s.includes('ALTER TABLE fila_diagnosticos') &&
+          s.includes('cross_validation_retry_count')
+      )
+    ).toBe(true);
+    expect(sql().some((s) => s.includes('DROP TABLE IF EXISTS fila_slm_logs'))).toBe(true);
+    expect(sql().some((s) => s.includes('PRAGMA user_version = 8'))).toBe(true);
+  });
+
+  it('não roda a v8 num banco que já está na 8', async () => {
+    const { driver, sql } = recordingDriver(8);
+
+    await runMigrationsAndSeed(driver as never);
+
+    expect(sql().some((s) => s.includes('DROP TABLE IF EXISTS fila_slm_logs'))).toBe(false);
+  });
+});

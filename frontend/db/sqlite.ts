@@ -490,6 +490,29 @@ export async function runMigrationsAndSeed(driver: IDatabaseDriver) {
     console.log('[Database] Migration to version 7 complete.');
   }
 
+  if (version < 8) {
+    console.log('[Database] Migrating to version 8: a fila de conversas assume o sync...');
+
+    // Contador próprio: `retry_count` é da fila de sync. Misturar as duas
+    // contagens na mesma coluna faria um upload falho gastar a tentativa da
+    // segunda opinião, e vice-versa.
+    try {
+      await driver.execute(
+        'ALTER TABLE fila_diagnosticos ADD COLUMN cross_validation_retry_count INTEGER NOT NULL DEFAULT 0;'
+      );
+    } catch {
+      console.warn('[Database] cross_validation_retry_count might already exist.');
+    }
+
+    // A v7 já copiou o conteúdo desta tabela para chat_sessions/chat_messages.
+    // Com o /sync/slm-logs aposentado, manter a tabela só deixaria as linhas
+    // originais PENDING para sempre — o caminho da dupla sincronização.
+    await driver.execute('DROP TABLE IF EXISTS fila_slm_logs;');
+
+    await driver.execute('PRAGMA user_version = 8;');
+    console.log('[Database] Migration to version 8 complete.');
+  }
+
 }
 
 // -------------------------------------------------------------
