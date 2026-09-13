@@ -1,6 +1,8 @@
 import { api } from './api';
 import { dbDriver } from '../db/sqlite';
 import { ensureDiagnosticImageUploaded } from './diagnosticImageUploadService';
+import type { ChatAttachment } from './chatRepository';
+import type { ConnectionMode } from '../config/network';
 
 export type CrossValidationStatus =
   | 'PENDING'
@@ -115,4 +117,80 @@ export function getCrossValidationPriority(
     primary: cvConfidence < 0.7 ? 'LLM' : 'CV',
     showBoth: true,
   };
+}
+
+/** Guarda contra remontagem da tela: a segunda chamada espera a primeira. */
+const validacoesEmVoo = new Map<string, Promise<CrossValidationResult | null>>();
+
+const STATUS_TERMINAIS: ReadonlySet<string> = new Set([
+  'CONFIRMED',
+  'ENRICHED',
+  'DIVERGENT',
+  'SKIPPED',
+]);
+
+/**
+ * Dispara a segunda opinião se — e só se — ela ainda está pendente e há rede
+ * confiável. Devolve o veredito, ou null quando não havia o que fazer ou a
+ * chamada falhou; quem chama não precisa distinguir os dois, porque em ambos
+ * o caminho é reler o banco.
+ *
+ * Mora aqui, e não na câmera, porque é a tela de conversa que fica viva
+ * durante os 3 a 5 segundos da chamada — e porque reabrir a conversa depois
+ * de o app morrer no meio volta a tentar sozinho.
+ */
+export function runPendingCrossValidation(
+  attachment: ChatAttachment,
+  connectionMode: ConnectionMode
+): Promise<CrossValidationResult | null> {
+  const localId = attachment.diagnosticLocalId;
+  if (!localId) return Promise.resolve(null);
+  if (connectionMode !== 'ONLINE') return Promise.resolve(null);
+
+  const emVoo = validacoesEmVoo.get(localId);
+  if (emVoo) return emVoo;
+
+  // Sem await antes do set: duas montagens no mesmo tick precisam encontrar
+  // o mapa já populado pela primeira.
+  const execucao = executarValidacaoPendente(attachment, localId).finally(() => {
+    validacoesEmVoo.delete(localId);
+  });
+  validacoesEmVoo.set(localId, execucao);
+  return execucao;
+}
+
+async function executarValidacaoPendente(
+  attachment: ChatAttachment,
+  localId: string
+): Promise<CrossValidationResult | null> {
+  const res = await dbDriver.execute(
+    'SELECT cross_validation_status FROM fila_diagnosticos WHERE local_id = ?;',
+    [localId]
+  );
+  if (res.rows.length === 0) return null;
+
+  const status = String(res.rows._array[0].cross_validation_status ?? 'SKIPPED');
+  if (STATUS_TERMINAIS.has(status)) return null;
+
+  try {
+    const { result } = await crossValidateDiagnostic({
+      localId,
+      imageUri: attachment.imageUri,
+      imageS3Key: attachment.imageS3Key ?? null,
+      cvResult: {
+        doencaId: attachment.cvResult.diseaseId,
+        doencaNome: attachment.diseaseName ?? 'Doença identificada pelo modelo local',
+        confianca: attachment.cvResult.confidence,
+        modeloUsado: attachment.cvResult.modelUsed,
+        tempoInferenciaMs: attachment.cvResult.inferenceTimeMs,
+      },
+    });
+    return result;
+  } catch (error: any) {
+    // SKIPPED e não PENDING: sem isso o cliente offline-first re-tentaria
+    // indefinidamente, e cada ciclo custa uma leitura no S3 mais uma
+    // inferência de visão paga.
+    await markCrossValidationSkipped(localId, error?.code ?? 'LLM_UNAVAILABLE');
+    return null;
+  }
 }
