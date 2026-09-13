@@ -160,6 +160,7 @@ describe('migração v8 — fila de conversas assume o sync', () => {
 
     await runMigrationsAndSeed(driver as never);
 
-    expect(sql().some((s) => s.includes('DROP TABLE IF EXISTS fila_slm_logs'))).toBe(false);
+    // Prova que a guarda pulou a v8 e nada além da sondagem de versão foi executado.
+    expect(sql()).toEqual(['PRAGMA user_version;']);
   });
 });
