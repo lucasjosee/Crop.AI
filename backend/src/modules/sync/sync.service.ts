@@ -207,6 +207,21 @@ export class SyncService {
       let conversaId: string;
 
       try {
+        // A imagem precisa pertencer ao prefixo do usuário autenticado — mesma
+        // invariante que /sync/diagnostics e /diagnosis/cross-validate aplicam.
+        const expectedPrefix = `diagnosticos/${userId}/`;
+        const chaveInvalida = item.messages.find(
+          (m) => m.attachment_s3_key && !m.attachment_s3_key.startsWith(expectedPrefix)
+        );
+        if (chaveInvalida) {
+          failed_items.push({
+            session_id: item.session_id,
+            error_code: 'INVALID_IMAGE_KEY',
+            message: `A imagem da mensagem ${chaveInvalida.message_id} não pertence ao usuário autenticado.`,
+          });
+          continue;
+        }
+
         // A conversa e suas mensagens são uma unidade de falha só: se a
         // inserção das mensagens der errado, a conversa que acabou de ser
         // gravada não pode sobreviver sozinha — vira metade de uma conversa,

@@ -158,4 +158,110 @@ describe('POST /api/v1/sync/conversations (integration)', () => {
     const linhas = await db.select().from(mensagens).where(eq(mensagens.conversaId, conversa.id));
     expect(linhas).toHaveLength(2);
   });
+
+  it('recusa anexo fora do prefixo do usuário e devolve o envelope como falha', async () => {
+    const sessionId = randomUUID();
+    const res = await post({
+      conversations: [
+        makeConversation(sessionId, {
+          messages: [makeMessage({ attachment_s3_key: 'diagnosticos/outro-usuario/foto.jpg' })],
+        }),
+      ],
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.status).toBe('partial');
+    expect(body.failed_items[0].error_code).toBe('INVALID_IMAGE_KEY');
+
+    const linhas = await db.select().from(conversas).where(eq(conversas.mobileSessionId, sessionId));
+    expect(linhas).toHaveLength(0);
+  });
+
+  it('aceita anexo do próprio usuário', async () => {
+    const sessionId = randomUUID();
+    const res = await post({
+      conversations: [
+        makeConversation(sessionId, {
+          messages: [makeMessage({ attachment_s3_key: `diagnosticos/${userId}/foto.jpg` })],
+        }),
+      ],
+    });
+
+    const body = JSON.parse(res.body);
+    expect(body.status).toBe('success');
+    const [conversa] = await db.select().from(conversas).where(eq(conversas.mobileSessionId, sessionId));
+    const [msg] = await db.select().from(mensagens).where(eq(mensagens.conversaId, conversa.id));
+    expect(msg.anexoS3Key).toBe(`diagnosticos/${userId}/foto.jpg`);
+  });
+
+  it('um envelope inválido não derruba os válidos que viajam com ele', async () => {
+    const bom = randomUUID();
+    const res = await post({
+      conversations: [
+        makeConversation(bom),
+        { session_id: 'nao-e-uuid', title: 'x', created_at: 'ontem', updated_at: 'ontem', messages: [] },
+      ],
+    });
+
+    const body = JSON.parse(res.body);
+    expect(body.status).toBe('partial');
+    expect(body.synced_count).toBe(1);
+    expect(body.failed_count).toBe(1);
+    expect(body.failed_items[0].error_code).toBe('VALIDATION_ERROR');
+    expect(body.synced_items[0].session_id).toBe(bom);
+  });
+
+  it('sessão sem mensagens novas sobe e atualiza o título', async () => {
+    const sessionId = randomUUID();
+    await post({ conversations: [makeConversation(sessionId)] });
+
+    const res = await post({
+      conversations: [
+        makeConversation(sessionId, {
+          title: 'Renomeada pelo produtor',
+          updated_at: '2026-09-13T10:00:00Z',
+          messages: [],
+        }),
+      ],
+    });
+
+    expect(JSON.parse(res.body).status).toBe('success');
+    const [conversa] = await db.select().from(conversas).where(eq(conversas.mobileSessionId, sessionId));
+    expect(conversa.titulo).toBe('Renomeada pelo produtor');
+  });
+
+  it('apagada_em é monotônico: nenhum reenvio ressuscita a conversa', async () => {
+    const sessionId = randomUUID();
+    await post({
+      conversations: [makeConversation(sessionId, { deleted_at: '2026-09-13T11:00:00Z' })],
+    });
+
+    await post({
+      conversations: [
+        makeConversation(sessionId, { deleted_at: null, updated_at: '2026-09-13T12:00:00Z' }),
+      ],
+    });
+
+    const [conversa] = await db.select().from(conversas).where(eq(conversas.mobileSessionId, sessionId));
+    expect(conversa.apagadaEm).not.toBeNull();
+  });
+
+  it('updated_at mais antigo não rebobina o título', async () => {
+    const sessionId = randomUUID();
+    await post({
+      conversations: [
+        makeConversation(sessionId, { title: 'Título novo', updated_at: '2026-09-13T15:00:00Z' }),
+      ],
+    });
+
+    await post({
+      conversations: [
+        makeConversation(sessionId, { title: 'Título velho', updated_at: '2026-09-13T09:00:00Z' }),
+      ],
+    });
+
+    const [conversa] = await db.select().from(conversas).where(eq(conversas.mobileSessionId, sessionId));
+    expect(conversa.titulo).toBe('Título novo');
+  });
 });
