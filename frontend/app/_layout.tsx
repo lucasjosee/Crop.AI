@@ -125,7 +125,8 @@ export default function RootLayout() {
       >
         <Stack.Screen name="index" />
         <Stack.Screen name="camera" />
-        <Stack.Screen name="chat" />
+        <Stack.Screen name="chat/index" />
+        <Stack.Screen name="chat/[sessionId]" />
         <Stack.Screen name="(auth)/login" />
         <Stack.Screen name="(auth)/register" />
       </Stack>

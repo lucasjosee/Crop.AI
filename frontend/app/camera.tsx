@@ -515,7 +515,8 @@ export default function CameraScreen() {
       buildDiagnosticChatContext(
         inferenceResult,
         diseaseDetails?.nome_comum,
-        imageS3Key
+        imageS3Key,
+        diagnosticLocalId
       )
     );
     router.push('/chat');
