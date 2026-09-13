@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   diagnosticos,
@@ -164,6 +164,20 @@ export class SyncService {
               eq(feedbacksDiagnostico.mobileLocalId, item.local_id),
               eq(feedbacksDiagnostico.userId, userId),
               eq(feedbacksDiagnostico.status, 'PENDING_DIAGNOSTIC')
+            )
+          );
+
+        // Mesma religação que os feedbacks têm: a conversa pode ter subido
+        // antes do diagnóstico que a originou. Só escreve onde ainda é nulo,
+        // para nunca sobrescrever um vínculo já resolvido.
+        await db
+          .update(conversas)
+          .set({ diagnosticoId: inserted.id })
+          .where(
+            and(
+              eq(conversas.userId, userId),
+              eq(conversas.mobileDiagnosticLocalId, item.local_id),
+              isNull(conversas.diagnosticoId)
             )
           );
 

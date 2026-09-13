@@ -264,4 +264,45 @@ describe('POST /api/v1/sync/conversations (integration)', () => {
     const [conversa] = await db.select().from(conversas).where(eq(conversas.mobileSessionId, sessionId));
     expect(conversa.titulo).toBe('Título novo');
   });
+
+  it('religa o diagnóstico à conversa quando ele sincroniza depois', async () => {
+    const sessionId = randomUUID();
+    const diagnosticLocalId = randomUUID();
+
+    // A conversa chega primeiro, sem o diagnóstico correspondente.
+    await post({
+      conversations: [
+        makeConversation(sessionId, { origin_diagnostic_local_id: diagnosticLocalId }),
+      ],
+    });
+
+    const [antes] = await db.select().from(conversas).where(eq(conversas.mobileSessionId, sessionId));
+    expect(antes.diagnosticoId).toBeNull();
+    expect(antes.mobileDiagnosticLocalId).toBe(diagnosticLocalId);
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/sync/diagnostics',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      payload: {
+        diagnostics: [
+          {
+            local_id: diagnosticLocalId,
+            timestamp: '2026-09-13T08:00:00Z',
+            image_s3_key: `diagnosticos/${userId}/${diagnosticLocalId}.jpg`,
+            location: { lat: -23.5, lng: -46.6 },
+            ai_result: {
+              doenca_id: doencaId,
+              confianca: 0.9,
+              modelo_usado: 'tflite_v1.0',
+              tempo_inferencia_ms: 40,
+            },
+          },
+        ],
+      },
+    });
+
+    const [depois] = await db.select().from(conversas).where(eq(conversas.mobileSessionId, sessionId));
+    expect(depois.diagnosticoId).not.toBeNull();
+  });
 });
