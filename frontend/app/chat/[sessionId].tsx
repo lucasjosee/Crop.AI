@@ -4,6 +4,7 @@ import {
   View,
   Text,
   FlatList,
+  Image,
   TextInput,
   TouchableOpacity,
   StyleSheet,
@@ -25,6 +26,11 @@ import {
   type ChatSession,
 } from '../../lib/chatRepository';
 import { buildCatalogContext } from '../../lib/catalogContext';
+import { DiagnosisCard } from '../../components/DiagnosisCard';
+import { FeedbackPanel } from '../../components/FeedbackPanel';
+import { loadDiagnosisDetails, type DiagnosisDetails } from '../../lib/diagnosisDetails';
+import { runPendingCrossValidation } from '../../lib/crossValidationService';
+import type { ChatAttachment } from '../../lib/chatRepository';
 import { useChatStore } from '../../store/useChatStore';
 import { useNetworkStore } from '../../store/useNetworkStore';
 import { theme } from '../../config/theme';
@@ -38,6 +44,13 @@ const ERROR_MESSAGES: Record<EngineError, string> = {
   ABORTED: '',
   UNKNOWN: 'Não foi possível gerar a resposta. Toque em tentar de novo.',
 };
+
+/**
+ * RF02 / Lei 7.802. A prosa do motor cita defensivo e dosagem tanto quanto o
+ * card, e até aqui esta tela não avisava nada.
+ */
+const AVISO_LEGAL =
+  'Recomendações de defensivo exigem validação de engenheiro agrônomo (Lei 7.802/1989).';
 
 export default function ChatSessionScreen() {
   const router = useRouter();
@@ -56,17 +69,36 @@ export default function ChatSessionScreen() {
   // não dá para usar a presença dele como discriminador.
   const [partialUnsaved, setPartialUnsaved] = useState(false);
   const [lastFailed, setLastFailed] = useState<ChatMessage | null>(null);
+  const [details, setDetails] = useState<DiagnosisDetails | null>(null);
+  // Único dado do card que não vem do banco: o status é PENDING tanto com a
+  // chamada em voo quanto quando nunca foi tentada, e só esta tela distingue.
+  const [isValidating, setIsValidating] = useState(false);
 
   const { isStreaming, streamingContent, pendingResponseFor, modelLoadProgress } = useChatStore();
   const { connectionMode } = useNetworkStore();
   const isBusy = isStreaming || pendingResponseFor === sessionId;
   const modeLabel = connectionMode === 'FIELD' ? '🌾 Campo' : '☁️ Online';
 
-  const reload = useCallback(async () => {
-    if (!sessionId) return;
+  const reload = useCallback(async (): Promise<ChatMessage[]> => {
+    if (!sessionId) return [];
     const [s, list] = await Promise.all([getSession(sessionId), listMessages(sessionId)]);
     setSession(s);
     setMessages(list);
+
+    const foto = list.find((m) => m.attachment);
+    if (!foto?.attachment) {
+      setDetails(null);
+      return list;
+    }
+    try {
+      setDetails(await loadDiagnosisDetails(foto.attachment));
+    } catch (err) {
+      // Degradar é melhor do que sumir com a conversa inteira: a prosa do
+      // motor continua legível mesmo sem o card.
+      console.warn('[Chat] Falha ao carregar o diagnóstico da foto.', err);
+      setDetails(null);
+    }
+    return list;
   }, [sessionId]);
 
   /**
@@ -155,6 +187,31 @@ export default function ChatSessionScreen() {
     [sessionId, reload]
   );
 
+  /**
+   * A segunda opinião é disparada daqui, e não da câmera, porque é esta tela
+   * que fica viva durante os 3 a 5 segundos da chamada — e porque reabrir a
+   * conversa depois de o app morrer no meio volta a tentar sozinho.
+   * runPendingCrossValidation decide se há o que fazer e protege contra
+   * remontagem; aqui só cuidamos do spinner.
+   */
+  const validarSegundaOpiniao = useCallback(
+    async (attachment: ChatAttachment) => {
+      setIsValidating(true);
+      try {
+        const veredito = await runPendingCrossValidation(
+          attachment,
+          useNetworkStore.getState().connectionMode
+        );
+        if (veredito) await reload();
+      } catch (err) {
+        console.warn('[Chat] Segunda opinião indisponível; o diagnóstico local continua válido.', err);
+      } finally {
+        setIsValidating(false);
+      }
+    },
+    [reload]
+  );
+
   // Carrega a sessão e, se a última mensagem é uma foto sem resposta, dispara
   // sozinho (spec §3.3). É o que faz "tirar foto → cair no chat já respondendo"
   // ser só uma navegação, e resolve o app morto no meio da resposta.
@@ -162,7 +219,11 @@ export default function ChatSessionScreen() {
     if (!sessionId) return;
     useChatStore.getState().setActiveSession(sessionId);
     (async () => {
-      await reload();
+      const list = await reload();
+
+      const foto = list.find((m) => m.attachment);
+      if (foto?.attachment) void validarSegundaOpiniao(foto.attachment);
+
       const pendente = await findUnansweredUserMessage(sessionId);
       if (pendente?.attachment) {
         // Foto: o produtor já pediu a análise ao disparar a câmera — responder
@@ -178,7 +239,7 @@ export default function ChatSessionScreen() {
       abortRef.current?.abort();
       useChatStore.getState().setActiveSession(null);
     };
-  }, [sessionId, reload, requestResponse]);
+  }, [sessionId, reload, requestResponse, validarSegundaOpiniao]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -197,20 +258,62 @@ export default function ChatSessionScreen() {
     abortRef.current?.abort();
   }, []);
 
-  const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
-    const isUser = item.role === 'user';
-    const content = item.content || (item.attachment ? '📷 Foto enviada para análise' : '');
-    return (
-      <View style={[styles.messageRow, isUser ? styles.userRow : styles.assistantRow]}>
-        <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
-          <Text style={[styles.messageText, isUser && styles.userText]}>{content}</Text>
-          {!isUser && item.source && (
-            <Text style={styles.sourceBadge}>{item.source === 'CLOUD_LLM' ? '☁️' : '📱'}</Text>
-          )}
+  const renderMessage = useCallback(
+    ({ item }: { item: ChatMessage }) => {
+      if (item.attachment) {
+        // A foto aparece na hora; o card completa quando a leitura do
+        // catálogo termina — é questão de milissegundos, mas a foto é o que
+        // o produtor acabou de tirar e precisa ver de imediato.
+        if (!details) {
+          return (
+            <View style={[styles.messageRow, styles.userRow]}>
+              <Image
+                source={{ uri: item.attachment.imageUri }}
+                style={styles.fotoSozinha}
+                resizeMode="cover"
+                accessibilityLabel="Foto enviada para análise"
+              />
+            </View>
+          );
+        }
+        return (
+          <View style={[styles.messageRow, styles.userRow]}>
+            <View style={styles.diagnostico}>
+              <DiagnosisCard
+                attachment={item.attachment}
+                details={details}
+                isValidating={isValidating}
+              />
+              {details.feedbackJaEnviado ? (
+                <Text style={styles.feedbackFeito}>✓ Feedback registrado</Text>
+              ) : item.attachment.diagnosticLocalId ? (
+                <View style={styles.feedbackCaixa}>
+                  <FeedbackPanel
+                    diagnosticLocalId={item.attachment.diagnosticLocalId}
+                    details={details}
+                    onSubmitted={() => void reload()}
+                  />
+                </View>
+              ) : null}
+            </View>
+          </View>
+        );
+      }
+
+      const isUser = item.role === 'user';
+      return (
+        <View style={[styles.messageRow, isUser ? styles.userRow : styles.assistantRow]}>
+          <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
+            <Text style={[styles.messageText, isUser && styles.userText]}>{item.content}</Text>
+            {!isUser && item.source && (
+              <Text style={styles.sourceBadge}>{item.source === 'CLOUD_LLM' ? '☁️' : '📱'}</Text>
+            )}
+          </View>
         </View>
-      </View>
-    );
-  }, []);
+      );
+    },
+    [details, isValidating, reload]
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -273,6 +376,8 @@ export default function ChatSessionScreen() {
             </View>
           </View>
         ) : null}
+
+        <Text style={styles.avisoLegal}>{AVISO_LEGAL}</Text>
 
         <View style={styles.inputRow}>
           <TextInput
@@ -394,4 +499,33 @@ const styles = StyleSheet.create({
   sendButtonText: { color: '#FFFFFF', fontSize: 18 },
   retryText: { color: theme.colors.primary, fontWeight: '600', marginTop: 6 },
   partialNote: { fontSize: 11, color: theme.colors.textSecondary, marginTop: 4, fontStyle: 'italic' },
+  fotoSozinha: {
+    width: '82%',
+    aspectRatio: 4 / 3,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.border,
+  },
+  diagnostico: { alignItems: 'flex-end', width: '100%' },
+  feedbackCaixa: {
+    width: '92%',
+    backgroundColor: theme.colors.surfaceLight,
+    borderBottomLeftRadius: theme.borderRadius.lg,
+    borderBottomRightRadius: theme.borderRadius.lg,
+    paddingHorizontal: theme.spacing.md,
+    paddingBottom: theme.spacing.md,
+    marginTop: -theme.spacing.sm,
+  },
+  feedbackFeito: {
+    color: theme.colors.primary,
+    fontSize: theme.typography.fontSize.xs,
+    fontWeight: '600',
+    marginTop: 6,
+  },
+  avisoLegal: {
+    color: theme.colors.textSecondary,
+    fontSize: theme.typography.fontSize.xxs,
+    textAlign: 'center',
+    paddingHorizontal: theme.spacing.md,
+    paddingBottom: 4,
+  },
 });
