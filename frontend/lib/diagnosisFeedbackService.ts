@@ -52,3 +52,16 @@ export function buildDiagnosticChatContext(
     diagnostic_local_id: diagnosticLocalId ?? undefined,
   };
 }
+
+/**
+ * O card de diagnóstico vive dentro de uma conversa que persiste, então
+ * "já avaliei isto" não pode ser estado de componente — sairia da tela e o
+ * app pediria a mesma avaliação de novo a cada abertura.
+ */
+export async function hasFeedback(diagnosticLocalId: string): Promise<boolean> {
+  const res = await dbDriver.execute(
+    'SELECT 1 FROM fila_feedbacks WHERE diagnostic_local_id = ? LIMIT 1;',
+    [diagnosticLocalId]
+  );
+  return res.rows.length > 0;
+}
