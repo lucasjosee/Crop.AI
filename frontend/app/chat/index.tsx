@@ -1,12 +1,11 @@
 // frontend/app/chat/index.tsx
-// Ponto de entrada de /chat: cria uma sessão e redireciona para ela. Se a
-// câmera deixou um diagnóstico no diagnosticContext, a sessão nasce apontando
-// para ele — é assim que o contexto do catálogo é construído por doenca_id.
+// Ponto de entrada de /chat: cria uma conversa livre e redireciona para ela.
+// Conversa que nasce de uma foto não passa por aqui — a câmera cria a sessão
+// e a primeira mensagem ela mesma.
 import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { createSession } from '../../lib/chatRepository';
-import { useChatStore } from '../../store/useChatStore';
 import { theme } from '../../config/theme';
 
 export default function NewChatScreen() {
@@ -15,12 +14,7 @@ export default function NewChatScreen() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const context = useChatStore.getState().diagnosticContext;
-      const session = await createSession({
-        title: context?.doenca_identificada ?? 'Nova conversa',
-        originDiagnosticLocalId: context?.diagnostic_local_id ?? null,
-      });
-      useChatStore.getState().setDiagnosticContext(null);
+      const session = await createSession({ title: 'Nova conversa' });
       if (!cancelled) router.replace(`/chat/${session.id}`);
     })();
     return () => {

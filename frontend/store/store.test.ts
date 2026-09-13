@@ -224,7 +224,6 @@ describe('useChatStore', () => {
     useChatStore.getState().setActiveSession(null);
     useChatStore.getState().setPendingResponseFor(null);
     useChatStore.getState().setModelLoadProgress(null);
-    useChatStore.getState().setDiagnosticContext(null);
   });
 
   it('acumula tokens em streamingContent e marca isStreaming', () => {
@@ -260,10 +259,5 @@ describe('useChatStore', () => {
     expect(useChatStore.getState().modelLoadProgress).toBe(0.4);
     useChatStore.getState().setModelLoadProgress(null);
     expect(useChatStore.getState().modelLoadProgress).toBeNull();
-  });
-
-  it('mantém a ponte com a câmera via diagnosticContext', () => {
-    useChatStore.getState().setDiagnosticContext({ doenca_id: 'u', diagnostic_local_id: 'd1' });
-    expect(useChatStore.getState().diagnosticContext?.diagnostic_local_id).toBe('d1');
   });
 });

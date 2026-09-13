@@ -11,7 +11,6 @@ vi.mock('expo-crypto', () => ({ randomUUID: () => 'feedback-uuid' }));
 vi.mock('../db/sqlite', () => ({ dbDriver: { execute: mocks.execute } }));
 
 import {
-  buildDiagnosticChatContext,
   hasFeedback,
   queueDiagnosisFeedback,
 } from './diagnosisFeedbackService';
@@ -37,33 +36,6 @@ describe('diagnosisFeedbackService', () => {
       'Parece mancha alvo.',
       'PENDING',
     ]));
-  });
-
-  it('monta o contexto diagnóstico → chat, incluindo especiais e image_s3_key disponível', () => {
-    const healthy = buildDiagnosticChatContext(
-      { diseaseId: 'Saudável', confidence: 0.97, inferenceTimeMs: 30, modelUsed: 'tflite_v1.0' },
-      null,
-      'diagnosticos/user/leaf.jpg'
-    );
-    expect(healthy).toEqual({
-      doenca_identificada: 'Saudável',
-      doenca_id: 'Saudável',
-      cultura: 'Soja',
-      confianca_visao: 0.97,
-      image_s3_key: 'diagnosticos/user/leaf.jpg',
-      diagnostic_local_id: undefined,
-    });
-  });
-
-  it('carrega doenca_id e diagnostic_local_id para a sessão de conversa poder apontar ao diagnóstico', () => {
-    const ctx = buildDiagnosticChatContext(
-      { diseaseId: 'uuid-ferrugem', confidence: 0.9, inferenceTimeMs: 40, modelUsed: 'm' },
-      'Ferrugem Asiática',
-      'diagnosticos/u/x.jpg',
-      'local-123'
-    );
-    expect(ctx.doenca_id).toBe('uuid-ferrugem');
-    expect(ctx.diagnostic_local_id).toBe('local-123');
   });
 
   it('hasFeedback devolve true quando já existe avaliação para o diagnóstico', async () => {
