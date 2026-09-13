@@ -204,77 +204,88 @@ export class SyncService {
       }
       const item = parsed.data;
 
+      let conversaId: string;
+
       try {
-        const diagnostico = item.origin_diagnostic_local_id
-          ? await db.query.diagnosticos.findFirst({
-              where: and(
-                eq(diagnosticos.userId, userId),
-                eq(diagnosticos.mobileLocalId, item.origin_diagnostic_local_id)
-              ),
-            })
-          : null;
+        // A conversa e suas mensagens são uma unidade de falha só: se a
+        // inserção das mensagens der errado, a conversa que acabou de ser
+        // gravada não pode sobreviver sozinha — vira metade de uma conversa,
+        // sem nenhuma mensagem, e o item é reportado como falho. A transação
+        // é o que garante isso.
+        conversaId = await db.transaction(async (tx) => {
+          const diagnostico = item.origin_diagnostic_local_id
+            ? await tx.query.diagnosticos.findFirst({
+                where: and(
+                  eq(diagnosticos.userId, userId),
+                  eq(diagnosticos.mobileLocalId, item.origin_diagnostic_local_id)
+                ),
+              })
+            : null;
 
-        const existente = await db.query.conversas.findFirst({
-          where: and(eq(conversas.userId, userId), eq(conversas.mobileSessionId, item.session_id)),
+          const existente = await tx.query.conversas.findFirst({
+            where: and(eq(conversas.userId, userId), eq(conversas.mobileSessionId, item.session_id)),
+          });
+
+          let id: string;
+          if (existente) {
+            id = existente.id;
+            const patch: Record<string, unknown> = {};
+            if (new Date(item.updated_at) >= existente.atualizadaEm) {
+              patch.titulo = item.title;
+              patch.atualizadaEm = new Date(item.updated_at);
+            }
+            if (item.deleted_at && !existente.apagadaEm) {
+              patch.apagadaEm = new Date(item.deleted_at);
+            }
+            if (diagnostico && !existente.diagnosticoId) {
+              patch.diagnosticoId = diagnostico.id;
+            }
+            if (item.origin_diagnostic_local_id && !existente.mobileDiagnosticLocalId) {
+              patch.mobileDiagnosticLocalId = item.origin_diagnostic_local_id;
+            }
+            // set({}) faz o drizzle lançar; nada mudou é caminho normal aqui.
+            if (Object.keys(patch).length > 0) {
+              await tx.update(conversas).set(patch).where(eq(conversas.id, existente.id));
+            }
+          } else {
+            const [inserida] = await tx
+              .insert(conversas)
+              .values({
+                userId,
+                mobileSessionId: item.session_id,
+                titulo: item.title,
+                diagnosticoId: diagnostico?.id ?? null,
+                mobileDiagnosticLocalId: item.origin_diagnostic_local_id ?? null,
+                criadaEm: new Date(item.created_at),
+                atualizadaEm: new Date(item.updated_at),
+                apagadaEm: item.deleted_at ? new Date(item.deleted_at) : null,
+              })
+              .returning({ id: conversas.id });
+            id = inserida.id;
+          }
+
+          if (item.messages.length > 0) {
+            await tx
+              .insert(mensagens)
+              .values(
+                item.messages.map((m) => ({
+                  conversaId: id,
+                  mobileMessageId: m.message_id,
+                  papel: m.role,
+                  conteudo: m.content,
+                  origem: m.source ?? null,
+                  anexoS3Key: m.attachment_s3_key ?? null,
+                  latencyMs: m.latency_ms ?? null,
+                  criadaEm: new Date(m.created_at),
+                }))
+              )
+              .onConflictDoNothing({
+                target: [mensagens.conversaId, mensagens.mobileMessageId],
+              });
+          }
+
+          return id;
         });
-
-        let conversaId: string;
-        if (existente) {
-          conversaId = existente.id;
-          const patch: Record<string, unknown> = {};
-          if (new Date(item.updated_at) >= existente.atualizadaEm) {
-            patch.titulo = item.title;
-            patch.atualizadaEm = new Date(item.updated_at);
-          }
-          if (item.deleted_at && !existente.apagadaEm) {
-            patch.apagadaEm = new Date(item.deleted_at);
-          }
-          if (diagnostico && !existente.diagnosticoId) {
-            patch.diagnosticoId = diagnostico.id;
-          }
-          if (item.origin_diagnostic_local_id && !existente.mobileDiagnosticLocalId) {
-            patch.mobileDiagnosticLocalId = item.origin_diagnostic_local_id;
-          }
-          // set({}) faz o drizzle lançar; nada mudou é caminho normal aqui.
-          if (Object.keys(patch).length > 0) {
-            await db.update(conversas).set(patch).where(eq(conversas.id, existente.id));
-          }
-        } else {
-          const [inserida] = await db
-            .insert(conversas)
-            .values({
-              userId,
-              mobileSessionId: item.session_id,
-              titulo: item.title,
-              diagnosticoId: diagnostico?.id ?? null,
-              mobileDiagnosticLocalId: item.origin_diagnostic_local_id ?? null,
-              criadaEm: new Date(item.created_at),
-              atualizadaEm: new Date(item.updated_at),
-              apagadaEm: item.deleted_at ? new Date(item.deleted_at) : null,
-            })
-            .returning({ id: conversas.id });
-          conversaId = inserida.id;
-        }
-
-        if (item.messages.length > 0) {
-          await db
-            .insert(mensagens)
-            .values(
-              item.messages.map((m) => ({
-                conversaId,
-                mobileMessageId: m.message_id,
-                papel: m.role,
-                conteudo: m.content,
-                origem: m.source ?? null,
-                anexoS3Key: m.attachment_s3_key ?? null,
-                latencyMs: m.latency_ms ?? null,
-                criadaEm: new Date(m.created_at),
-              }))
-            )
-            .onConflictDoNothing({
-              target: [mensagens.conversaId, mensagens.mobileMessageId],
-            });
-        }
 
         synced_items.push({ session_id: item.session_id, server_id: conversaId });
       } catch (err) {
