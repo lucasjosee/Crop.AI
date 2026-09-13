@@ -57,8 +57,6 @@ const mocks = vi.hoisted(() => {
       return wrap([]);
     }
 
-    if (s.startsWith('UPDATE chat_sessions SET updated_at')) return wrap([]);
-
     return wrap([]);
   });
 
@@ -278,5 +276,89 @@ describe('conversationSyncService', () => {
 
     const [, body] = vi.mocked(api.post).mock.calls[0] as [string, any];
     expect(body.conversations[0].title).toBe('Conversa');
+  });
+
+  it('sessão com envelopes em lotes diferentes: o lote que falha não marca as mensagens dele como sincronizadas', async () => {
+    // 19 sessões de enchimento para empurrar o segundo envelope da sessão
+    // "grande" (201 mensagens, > MAX_MENSAGENS_POR_ENVELOPE) para o lote
+    // seguinte — MAX_CONVERSAS_POR_LOTE é 20.
+    for (let i = 0; i < 19; i++) {
+      mocks.sessions.push(sessao({ id: `f${i}` }));
+      mocks.messages.push(mensagem({ id: `fm${i}`, session_id: `f${i}` }));
+    }
+    mocks.sessions.push(sessao({ id: 'grande', retry_count: 0 }));
+    for (let i = 0; i < 201; i++) {
+      mocks.messages.push(mensagem({ id: `m${i}`, session_id: 'grande' }));
+    }
+
+    vi.mocked(api.post).mockImplementation(async (_url: string, body: any) => {
+      const ids: string[] = body.conversations.map((c: any) => c.session_id);
+      // O segundo envelope da sessão "grande" (201ª mensagem) cai sozinho no
+      // segundo lote — é esse que falha.
+      if (ids.length === 1 && ids[0] === 'grande') {
+        return {
+          data: {
+            status: 'partial',
+            synced_count: 0,
+            failed_count: 1,
+            synced_items: [],
+            failed_items: [{ session_id: 'grande', error_code: 'VALIDATION_ERROR', message: 'x' }],
+          },
+        } as never;
+      }
+      return respostaOk(ids) as never;
+    });
+
+    const resultado = await syncPendingConversations();
+
+    expect(api.post).toHaveBeenCalledTimes(2);
+    const primeiraChamada = vi.mocked(api.post).mock.calls[0][1] as any;
+    const segundaChamada = vi.mocked(api.post).mock.calls[1][1] as any;
+    expect(primeiraChamada.conversations).toHaveLength(20);
+    expect(segundaChamada.conversations).toHaveLength(1);
+    expect(segundaChamada.conversations[0].session_id).toBe('grande');
+
+    // As 200 mensagens do primeiro envelope (confirmado no primeiro lote) sobem.
+    for (let i = 0; i < 200; i++) {
+      expect(mocks.messages.find((m) => m.id === `m${i}`)?.sync_status).toBe('SYNCED');
+    }
+    // A 201ª foi para o envelope do lote que falhou — não pode ter sido
+    // marcada como sincronizada, ou o dado se perde em silêncio.
+    expect(mocks.messages.find((m) => m.id === 'm200')?.sync_status).toBe('PENDING');
+
+    const sessaoGrande = mocks.sessions.find((s) => s.id === 'grande');
+    expect(sessaoGrande?.sync_status).toBe('PENDING');
+    expect(sessaoGrande?.retry_count).toBe(1);
+
+    expect(resultado).toEqual({ synced: 19, failed: 1 });
+  });
+
+  it('a consulta automática nunca pode reincluir sessão FAILED, nem a manual perder mensagem pendente de sessão SYNCED', async () => {
+    // O fake de sessões acima decide o resultado olhando a substring 'FAILED'
+    // no SQL, não interpretando-o de verdade — então ele não pegaria uma
+    // regressão em que SQL_SESSOES_AUTOMATICO perdesse a guarda "AND" e
+    // passasse a ressuscitar sessão FAILED em toda rodada automática. Este
+    // teste trava a forma do SQL em si, como db/sqliteMigrations.test.ts já
+    // faz com o recordingDriver.
+    mocks.sessions.push(sessao());
+    mocks.messages.push(mensagem());
+    vi.mocked(api.post).mockResolvedValue(respostaOk(['s1']) as never);
+
+    const normaliza = (sql: unknown) => String(sql).trim().replace(/\s+/g, ' ');
+
+    await syncPendingConversations(false);
+    const sqlAutomatico = mocks.execute.mock.calls
+      .map(([sql]) => normaliza(sql))
+      .find((sql: string) => sql.includes('FROM chat_sessions'));
+    expect(sqlAutomatico).toContain("sync_status = 'SYNCED' AND");
+    expect(sqlAutomatico).not.toContain("IN ('PENDING', 'FAILED')");
+
+    mocks.execute.mockClear();
+    await syncPendingConversations(true);
+    const sqlManual = mocks.execute.mock.calls
+      .map(([sql]) => normaliza(sql))
+      .find((sql: string) => sql.includes('FROM chat_sessions'));
+    expect(sqlManual).toContain("IN ('PENDING', 'FAILED')");
+    expect(sqlManual).not.toContain("sync_status = 'SYNCED' AND");
   });
 });

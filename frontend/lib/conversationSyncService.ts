@@ -29,6 +29,18 @@ interface Envelope {
   messages: EnvelopeMensagem[];
 }
 
+/**
+ * Um envelope junto das linhas que ele carrega. `mensagens` não vai no corpo
+ * da requisição (só `envelope` vai) — existe para marcar como SYNCED
+ * exatamente as mensagens deste envelope quando (e só quando) a resposta
+ * confirmar o lote em que ele foi enviado, nunca a lista inteira da sessão.
+ */
+interface EnvelopeParaEnviar {
+  envelope: Envelope;
+  sessionId: string;
+  mensagens: Row[];
+}
+
 function toArray(res: any): Row[] {
   const out: Row[] = [];
   for (let i = 0; i < res.rows.length; i++) out.push(res.rows.item(i));
@@ -119,7 +131,7 @@ function paraEnvelopeMensagem(row: Row): EnvelopeMensagem {
   };
 }
 
-function montarEnvelopes(sessao: Row, mensagens: Row[]): Envelope[] {
+function montarEnvelopes(sessao: Row, mensagens: Row[]): EnvelopeParaEnviar[] {
   const base = {
     session_id: sessao.id,
     // A migração v7 monta o título com `?? 'Conversa'`, que não dispara para
@@ -132,31 +144,41 @@ function montarEnvelopes(sessao: Row, mensagens: Row[]): Envelope[] {
     deleted_at: sessao.deleted_at ?? null,
   };
 
-  if (mensagens.length === 0) return [{ ...base, messages: [] }];
+  if (mensagens.length === 0) {
+    return [{ envelope: { ...base, messages: [] }, sessionId: sessao.id, mensagens: [] }];
+  }
 
-  const envelopes: Envelope[] = [];
+  const envelopes: EnvelopeParaEnviar[] = [];
   for (let i = 0; i < mensagens.length; i += MAX_MENSAGENS_POR_ENVELOPE) {
+    const fatia = mensagens.slice(i, i + MAX_MENSAGENS_POR_ENVELOPE);
     envelopes.push({
-      ...base,
-      messages: mensagens.slice(i, i + MAX_MENSAGENS_POR_ENVELOPE).map(paraEnvelopeMensagem),
+      envelope: { ...base, messages: fatia.map(paraEnvelopeMensagem) },
+      sessionId: sessao.id,
+      mensagens: fatia,
     });
   }
   return envelopes;
 }
 
-async function marcarSincronizada(sessionId: string, mensagens: Row[]): Promise<void> {
-  await dbDriver.execute(
-    "UPDATE chat_sessions SET sync_status = 'SYNCED', retry_count = 0 WHERE id = ?;",
-    [sessionId]
-  );
+async function marcarMensagensSincronizadas(mensagens: Row[]): Promise<void> {
   if (mensagens.length === 0) return;
 
   // Por id, e não "todas as pendentes da sessão": uma mensagem escrita
-  // enquanto a requisição estava no ar não subiu e não pode ser marcada.
+  // enquanto a requisição estava no ar não subiu e não pode ser marcada. Pelo
+  // mesmo motivo, quem chama já filtrou para só as mensagens do(s) envelope(s)
+  // confirmados neste lote — nunca a lista inteira da sessão, que pode ter
+  // envelopes irmãos ainda não enviados ou enviados num lote que falhou.
   const marcas = mensagens.map(() => '?').join(', ');
   await dbDriver.execute(
     `UPDATE chat_messages SET sync_status = 'SYNCED' WHERE id IN (${marcas});`,
     mensagens.map((m) => m.id)
+  );
+}
+
+async function marcarSessaoSincronizada(sessionId: string): Promise<void> {
+  await dbDriver.execute(
+    "UPDATE chat_sessions SET sync_status = 'SYNCED', retry_count = 0 WHERE id = ?;",
+    [sessionId]
   );
 }
 
@@ -174,8 +196,8 @@ export async function syncPendingConversations(includeFailed = false): Promise<S
   const sessoes = await sessoesParaSincronizar(includeFailed);
   if (sessoes.length === 0) return { synced: 0, failed: 0 };
 
-  const prontas = new Map<string, { sessao: Row; mensagens: Row[] }>();
-  const envelopes: Envelope[] = [];
+  const prontas = new Map<string, { sessao: Row; totalEnvelopes: number }>();
+  const envelopes: EnvelopeParaEnviar[] = [];
 
   for (const sessao of sessoes) {
     const mensagens = await mensagensPendentes(sessao.id);
@@ -187,31 +209,61 @@ export async function syncPendingConversations(includeFailed = false): Promise<S
       console.warn(`[Sync] Anexo de ${sessao.id} não subiu; conversa mantida como PENDING.`);
       continue;
     }
-    prontas.set(sessao.id, { sessao, mensagens });
-    envelopes.push(...montarEnvelopes(sessao, mensagens));
+    const doSessao = montarEnvelopes(sessao, mensagens);
+    prontas.set(sessao.id, { sessao, totalEnvelopes: doSessao.length });
+    envelopes.push(...doSessao);
   }
 
   if (envelopes.length === 0) return { synced: 0, failed: 0 };
 
-  const sincronizadas = new Set<string>();
-  const falhadas = new Set<string>();
+  // Envelopes confirmados por sessão, acumulado ao longo de toda a rodada —
+  // não por lote — porque uma sessão com mais de MAX_MENSAGENS_POR_ENVELOPE
+  // mensagens pendentes parte em vários envelopes, e o corte em lotes de
+  // MAX_CONVERSAS_POR_LOTE não se alinha por sessão: os envelopes irmãos
+  // podem cair em requisições diferentes.
+  const envelopesConfirmados = new Map<string, number>();
+  const sessoesComFalha = new Set<string>();
 
   for (let i = 0; i < envelopes.length; i += MAX_CONVERSAS_POR_LOTE) {
     const lote = envelopes.slice(i, i + MAX_CONVERSAS_POR_LOTE);
-    const { data } = await api.post('/api/v1/sync/conversations', { conversations: lote });
+    const { data } = await api.post('/api/v1/sync/conversations', {
+      conversations: lote.map((e) => e.envelope),
+    });
 
+    const confirmadosNesteLote = new Set<string>();
     for (const item of data.synced_items ?? []) {
-      const pronta = prontas.get(item.session_id);
-      if (!pronta || sincronizadas.has(item.session_id)) continue;
-      await marcarSincronizada(pronta.sessao.id, pronta.mensagens);
-      sincronizadas.add(item.session_id);
+      if (confirmadosNesteLote.has(item.session_id)) continue;
+      confirmadosNesteLote.add(item.session_id);
+
+      // Só os envelopes DESTE lote: uma sessão cujos envelopes irmãos ainda
+      // não subiram (ou subiram num lote que falhou) não pode ter as
+      // mensagens deles marcadas como sincronizadas.
+      const doLote = lote.filter((e) => e.sessionId === item.session_id);
+      if (doLote.length === 0) continue;
+      await marcarMensagensSincronizadas(doLote.flatMap((e) => e.mensagens));
+      envelopesConfirmados.set(item.session_id, (envelopesConfirmados.get(item.session_id) ?? 0) + doLote.length);
     }
+
     for (const item of data.failed_items ?? []) {
-      const pronta = prontas.get(item.session_id);
-      if (!pronta || falhadas.has(item.session_id)) continue;
-      await marcarRetentativa(pronta.sessao);
-      falhadas.add(item.session_id);
+      sessoesComFalha.add(item.session_id);
     }
+  }
+
+  const sincronizadas = new Set<string>();
+  const falhadas = new Set<string>();
+
+  for (const [sessionId, pronta] of prontas) {
+    if (sessoesComFalha.has(sessionId)) {
+      // Uma vez só, não uma por envelope: uma sessão com dois envelopes, um
+      // confirmado e outro rejeitado, ainda é uma tentativa a mais — não duas.
+      await marcarRetentativa(pronta.sessao);
+      falhadas.add(sessionId);
+    } else if ((envelopesConfirmados.get(sessionId) ?? 0) >= pronta.totalEnvelopes) {
+      await marcarSessaoSincronizada(sessionId);
+      sincronizadas.add(sessionId);
+    }
+    // Nem confirmada nem falhada: a resposta não cobriu esta sessão neste
+    // ciclo. Ela fica como estava e volta a ser candidata na próxima rodada.
   }
 
   // Conta sessões, não envelopes: uma conversa longa parte em vários e
