@@ -1,6 +1,7 @@
 import { resolveDiseaseName } from './diagnosisDetails';
 import { dataRelativa } from './sessionListFormat';
 import type { MapSession } from './chatRepository';
+import type { ConnectionMode } from '../config/network';
 
 export type TipoPino = 'SAUDAVEL' | 'PROBLEMA';
 
@@ -53,6 +54,19 @@ function lerDiseaseId(attachmentJson: string | null): string | null {
   }
 }
 
+/** A regra de classificação, num lugar só. Interna: quem usa entra por `classificarPino`. */
+function classificarDiseaseId(diseaseId: string | null): TipoPino {
+  return diseaseId === ID_SAUDAVEL ? 'SAUDAVEL' : 'PROBLEMA';
+}
+
+/**
+ * Puro. Classifica pelo `cvResult.diseaseId` do anexo da foto.
+ * Anexo ausente ou JSON inválido caem em `PROBLEMA` — na dúvida, sinalizar.
+ */
+export function classificarPino(attachmentJson: string | null): TipoPino {
+  return classificarDiseaseId(lerDiseaseId(attachmentJson));
+}
+
 export async function montarPinos(linhas: MapSession[], agora?: Date): Promise<PinoMapa[]> {
   const pinos: PinoMapa[] = [];
   for (const linha of linhas) {
@@ -61,13 +75,50 @@ export async function montarPinos(linhas: MapSession[], agora?: Date): Promise<P
       sessionId: linha.sessionId,
       latitude: linha.latitude,
       longitude: linha.longitude,
-      tipo: diseaseId === ID_SAUDAVEL ? 'SAUDAVEL' : 'PROBLEMA',
+      tipo: classificarDiseaseId(diseaseId),
       doencaNome: diseaseId ? await resolveDiseaseName(diseaseId) : NOME_DESCONHECIDO,
       dataRelativa: dataRelativa(linha.createdAt, agora),
       imageUri: linha.imageUri,
     });
   }
   return pinos;
+}
+
+export interface ResumoMapa {
+  total: number;
+  problemas: number;
+  saudaveis: number;
+}
+
+/**
+ * Puro e síncrono: conta sem tocar no catálogo.
+ *
+ * É o que permite o bloco da Home custar uma consulta só. `montarPinos` resolve
+ * o nome de cada doença no banco, uma consulta por linha; contagem não precisa
+ * de nome nenhum.
+ */
+export function resumoDoMapa(linhas: MapSession[]): ResumoMapa {
+  let saudaveis = 0;
+  for (const linha of linhas) {
+    if (classificarPino(linha.attachmentJson) === 'SAUDAVEL') saudaveis += 1;
+  }
+  return { total: linhas.length, problemas: linhas.length - saudaveis, saudaveis };
+}
+
+export type EstadoMapa = 'CARREGANDO' | 'SEM_REDE' | 'MAPA';
+
+/**
+ * Três estados, e não dois.
+ *
+ * `PROBING` é o estado inicial de até ~7 s (2 tentativas de 2 s mais 3 s de
+ * debounce, por `config/network.ts`). Nele o app **não sabe** se há rede;
+ * tratá-lo como `FIELD` mostraria "o mapa precisa de conexão" a quem tem
+ * internet, trocando um erro por outro.
+ */
+export function estadoDoMapa(modo: ConnectionMode): EstadoMapa {
+  if (modo === 'PROBING') return 'CARREGANDO';
+  if (modo === 'FIELD') return 'SEM_REDE';
+  return 'MAPA';
 }
 
 /**

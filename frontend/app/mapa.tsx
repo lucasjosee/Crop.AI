@@ -9,7 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import MapView, { Marker } from 'react-native-maps';
 import { listMapSessions } from '../lib/chatRepository';
-import { montarPinos, regiaoInicial, type PinoMapa, type RegiaoMapa } from '../lib/mapPins';
+import { montarPinos, regiaoInicial, estadoDoMapa, type PinoMapa, type RegiaoMapa } from '../lib/mapPins';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { theme } from '../config/theme';
 
@@ -21,7 +21,7 @@ export default function MapaScreen() {
   const [carregando, setCarregando] = useState(true);
   const [selecionado, setSelecionado] = useState<PinoMapa | null>(null);
 
-  const semRede = connectionMode === 'FIELD';
+  const estado = estadoDoMapa(connectionMode);
 
   const recarregar = useCallback(async () => {
     try {
@@ -40,12 +40,12 @@ export default function MapaScreen() {
   useFocusEffect(
     useCallback(() => {
       // Não gasta leitura de banco quando a tela nem vai desenhar o mapa.
-      if (semRede) {
+      if (estado === 'SEM_REDE') {
         setCarregando(false);
         return;
       }
       void recarregar();
-    }, [recarregar, semRede])
+    }, [recarregar, estado])
   );
 
   const cabecalho = (
@@ -62,7 +62,19 @@ export default function MapaScreen() {
     </View>
   );
 
-  if (semRede) {
+  if (estado === 'CARREGANDO') {
+    return (
+      <SafeAreaView style={styles.container}>
+        {cabecalho}
+        <View style={styles.centro}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={styles.avisoCarregando}>Verificando conexão…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (estado === 'SEM_REDE') {
     return (
       <SafeAreaView style={styles.container}>
         {cabecalho}
@@ -176,6 +188,12 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     fontSize: theme.typography.fontSize.sm,
     textAlign: 'center',
+  },
+  avisoCarregando: {
+    color: theme.colors.textSecondary,
+    fontSize: theme.typography.fontSize.sm,
+    textAlign: 'center',
+    marginTop: theme.spacing.md,
   },
   botaoConversas: {
     marginTop: theme.spacing.lg,
