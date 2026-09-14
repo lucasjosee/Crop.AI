@@ -17,10 +17,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { engineRouter, type EngineError } from '../../lib/engine';
 import {
   appendMessage,
+  ensureSession,
   findUnansweredUserMessage,
   getSession,
   getSessionDiseaseId,
   listMessages,
+  SESSAO_NOVA,
   updateMessageAttachment,
   type ChatMessage,
   type ChatSession,
@@ -78,48 +80,55 @@ export default function ChatSessionScreen() {
   const { connectionMode } = useNetworkStore();
   const isBusy = isStreaming || !!pendingResponses[sessionId];
   const modeLabel = connectionMode === 'FIELD' ? '🌾 Campo' : '☁️ Online';
+  // Rota de conversa que ainda não existe: a sessão nasce no primeiro envio.
+  const ehNova = sessionId === SESSAO_NOVA;
 
-  const reload = useCallback(async (): Promise<ChatMessage[]> => {
-    if (!sessionId) return [];
-    const [s, list] = await Promise.all([getSession(sessionId), listMessages(sessionId)]);
-    setSession(s);
-    setMessages(list);
+  const reload = useCallback(
+    async (idAlvo?: string): Promise<ChatMessage[]> => {
+      const alvo = idAlvo ?? sessionId;
+      if (!alvo) return [];
+      const [s, list] = await Promise.all([getSession(alvo), listMessages(alvo)]);
+      setSession(s);
+      setMessages(list);
 
-    const foto = list.find((m) => m.attachment);
-    if (!foto?.attachment) {
-      setDetails(null);
+      const foto = list.find((m) => m.attachment);
+      if (!foto?.attachment) {
+        setDetails(null);
+        return list;
+      }
+      try {
+        setDetails(await loadDiagnosisDetails(foto.attachment));
+      } catch (err) {
+        // Degradar é melhor do que sumir com a conversa inteira: a prosa do
+        // motor continua legível mesmo sem o card.
+        console.warn('[Chat] Falha ao carregar o diagnóstico da foto.', err);
+        setDetails(null);
+      }
       return list;
-    }
-    try {
-      setDetails(await loadDiagnosisDetails(foto.attachment));
-    } catch (err) {
-      // Degradar é melhor do que sumir com a conversa inteira: a prosa do
-      // motor continua legível mesmo sem o card.
-      console.warn('[Chat] Falha ao carregar o diagnóstico da foto.', err);
-      setDetails(null);
-    }
-    return list;
-  }, [sessionId]);
+    },
+    [sessionId]
+  );
 
   /**
    * Pede uma resposta ao roteador para a mensagem do usuário dada. A tela não
    * sabe qual motor responde — só entrega histórico, contexto e callbacks.
    */
   const requestResponse = useCallback(
-    async (userMessage: ChatMessage) => {
-      if (!sessionId) return;
+    async (userMessage: ChatMessage, idAlvo?: string) => {
+      const alvo = idAlvo ?? sessionId;
+      if (!alvo) return;
       const store = useChatStore.getState();
-      if (store.pendingResponses[sessionId]) return;
+      if (store.pendingResponses[alvo]) return;
 
-      store.marcarRespostaEmVoo(sessionId);
+      store.marcarRespostaEmVoo(alvo);
       store.resetStreaming();
       setChatError(null);
       setPartial(null);
       setPartialUnsaved(false);
       setLastFailed(null);
 
-      const history = (await listMessages(sessionId)).filter((m) => m.id !== userMessage.id);
-      const diseaseId = userMessage.attachment?.cvResult.diseaseId ?? (await getSessionDiseaseId(sessionId));
+      const history = (await listMessages(alvo)).filter((m) => m.id !== userMessage.id);
+      const diseaseId = userMessage.attachment?.cvResult.diseaseId ?? (await getSessionDiseaseId(alvo));
       let catalogContext = '';
       try {
         catalogContext = await buildCatalogContext(diseaseId);
@@ -133,7 +142,7 @@ export default function ChatSessionScreen() {
 
       engineRouter.respond(
         {
-          sessionId,
+          sessionId: alvo,
           history,
           userMessage: userMessage.content,
           attachment: userMessage.attachment ?? undefined,
@@ -151,10 +160,10 @@ export default function ChatSessionScreen() {
             }
             if (streamed.trim()) {
               try {
-                await appendMessage({ sessionId, role: 'assistant', content: streamed, source, latencyMs: meta.latencyMs });
+                await appendMessage({ sessionId: alvo, role: 'assistant', content: streamed, source, latencyMs: meta.latencyMs });
               } catch {
                 try {
-                  await appendMessage({ sessionId, role: 'assistant', content: streamed, source, latencyMs: meta.latencyMs });
+                  await appendMessage({ sessionId: alvo, role: 'assistant', content: streamed, source, latencyMs: meta.latencyMs });
                 } catch {
                   // A resposta existe mas não foi para o banco. Mantém na tela
                   // pelo mesmo caminho do parcial — sumir em silêncio seria pior,
@@ -166,14 +175,17 @@ export default function ChatSessionScreen() {
               }
             }
             useChatStore.getState().resetStreaming();
-            useChatStore.getState().limparRespostaEmVoo(sessionId);
+            useChatStore.getState().limparRespostaEmVoo(alvo);
             abortRef.current = null;
-            await reload();
+            // Explícito por causa da mesma closure travada em 'novo' que motivou
+            // o parâmetro desta função: sem o id, este reload cairia no
+            // sentinela em vez da sessão recém-criada.
+            await reload(alvo);
           },
           onError: (error) => {
             const text = useChatStore.getState().streamingContent;
             useChatStore.getState().resetStreaming();
-            useChatStore.getState().limparRespostaEmVoo(sessionId);
+            useChatStore.getState().limparRespostaEmVoo(alvo);
             abortRef.current = null;
             if (error === 'ABORTED') return;
             if (text.trim()) setPartial(text);
@@ -216,7 +228,9 @@ export default function ChatSessionScreen() {
   // sozinho (spec §3.3). É o que faz "tirar foto → cair no chat já respondendo"
   // ser só uma navegação, e resolve o app morto no meio da resposta.
   useEffect(() => {
-    if (!sessionId) return;
+    // O sentinela ainda não tem linha em chat_sessions: não há o que carregar,
+    // e marcar como sessão ativa aqui prenderia 'novo' no store.
+    if (!sessionId || ehNova) return;
     useChatStore.getState().setActiveSession(sessionId);
     (async () => {
       const list = await reload();
@@ -242,16 +256,28 @@ export default function ChatSessionScreen() {
       useChatStore.getState().limparRespostaEmVoo(sessionId);
       useChatStore.getState().setActiveSession(null);
     };
-  }, [sessionId, reload, requestResponse, validarSegundaOpiniao]);
+  }, [sessionId, ehNova, reload, requestResponse, validarSegundaOpiniao]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
     if (!text || isBusy || !sessionId) return;
     setInput('');
-    const userMessage = await appendMessage({ sessionId, role: 'user', content: text });
-    await reload();
-    void requestResponse(userMessage);
-  }, [input, isBusy, sessionId, reload, requestResponse]);
+
+    // A conversa livre nasce aqui, não no toque do botão da lista: sair sem
+    // escrever nada não pode deixar rastro. É a mesma regra da câmera, que só
+    // grava depois do "Analisar".
+    //
+    // O título sai da primeira mensagem, truncado em 60 — mesma convenção que a
+    // migração v7 usou para as conversas herdadas.
+    const { id, criada } = await ensureSession(sessionId, text.slice(0, 60));
+    if (criada) router.replace(`/chat/${id}`);
+
+    // `id` e não `sessionId`: depois do replace o parâmetro da rota muda, mas
+    // esta closure continua com o valor antigo.
+    const userMessage = await appendMessage({ sessionId: id, role: 'user', content: text });
+    await reload(id);
+    void requestResponse(userMessage, id);
+  }, [input, isBusy, sessionId, reload, requestResponse, router]);
 
   const retry = useCallback(() => {
     if (lastFailed) void requestResponse(lastFailed);
@@ -335,7 +361,7 @@ export default function ChatSessionScreen() {
             <Text style={styles.backButton}>←</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>
-            {session?.title ?? 'Agrônomo Virtual'}
+            {ehNova ? 'Nova conversa' : session?.title ?? 'Agrônomo Virtual'}
           </Text>
           <View style={[styles.modeBadge, connectionMode === 'FIELD' ? styles.fieldBadge : styles.onlineBadge]}>
             <Text style={styles.modeBadgeText}>{modeLabel}</Text>
