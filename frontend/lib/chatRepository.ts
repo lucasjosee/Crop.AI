@@ -195,6 +195,92 @@ export async function findUnansweredUserMessage(sessionId: string): Promise<Chat
   return last.role === 'user' ? last : null;
 }
 
+/** Rota de conversa que ainda não existe. A sessão nasce no primeiro envio. */
+export const SESSAO_NOVA = 'novo';
+
+/** Limite de `conversas.titulo` no Postgres. Passar disso derruba o envelope no sync. */
+export const TITULO_MAX = 255;
+
+export interface SessionListItem {
+  id: string;
+  title: string;
+  updatedAt: string;
+  /** Conteúdo da última mensagem. Vazio quando ela é a foto, que não tem texto. */
+  lastMessageContent: string | null;
+  lastMessageRole: 'user' | 'assistant' | null;
+  /** Não-nulo quando a conversa nasceu de uma foto. */
+  originDiagnosticLocalId: string | null;
+  messageCount: number;
+}
+
+/**
+ * As conversas da lista, da mais recente para a mais antiga.
+ *
+ * Sem paginação: a linha é leve e a FlatList virtualiza. Se um dia doer, o
+ * LIMIT entra aqui sem mudar a interface.
+ */
+export async function listSessions(): Promise<SessionListItem[]> {
+  const res = await dbDriver.execute(
+    `SELECT s.id, s.title, s.updated_at, s.origin_diagnostic_local_id,
+            (SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.id) AS message_count,
+            (SELECT m.content FROM chat_messages m WHERE m.session_id = s.id
+              ORDER BY m.created_at DESC LIMIT 1) AS last_message_content,
+            (SELECT m.role FROM chat_messages m WHERE m.session_id = s.id
+              ORDER BY m.created_at DESC LIMIT 1) AS last_message_role
+       FROM chat_sessions s
+      WHERE s.deleted_at IS NULL
+      ORDER BY s.updated_at DESC;`
+  );
+  return (res.rows._array as Array<Record<string, any>>).map((row) => ({
+    id: row.id,
+    title: row.title,
+    updatedAt: row.updated_at,
+    lastMessageContent: row.last_message_content ?? null,
+    lastMessageRole: row.last_message_role ?? null,
+    originDiagnosticLocalId: row.origin_diagnostic_local_id ?? null,
+    messageCount: row.message_count ?? 0,
+  }));
+}
+
+/**
+ * Renomeia e devolve o título que de fato ficou gravado.
+ *
+ * O bump em `updated_at` não é cosmético: a guarda monotônica do servidor
+ * (sub-projeto 4) descarta em silêncio um título cujo `updated_at` seja
+ * anterior ao que ele já tem.
+ */
+export async function renameSession(id: string, title: string): Promise<string> {
+  const limpo = title.trim().slice(0, TITULO_MAX);
+  // Vazio não escreve: o servidor exige título com pelo menos um caractere, e
+  // conversa sem nome não ajuda ninguém a se reencontrar na lista.
+  if (!limpo) {
+    const atual = await getSession(id);
+    return atual?.title ?? '';
+  }
+
+  const now = new Date().toISOString();
+  await dbDriver.execute(
+    "UPDATE chat_sessions SET title = ?, updated_at = ?, sync_status = 'PENDING' WHERE id = ?;",
+    [limpo, now, id]
+  );
+  return limpo;
+}
+
+/**
+ * Resolve o id real da conversa, criando-a se a rota ainda é o sentinela.
+ *
+ * Mora aqui, e não na tela, porque `[sessionId].tsx` já tem mais de 500 linhas
+ * e o projeto não testa tela.
+ */
+export async function ensureSession(
+  routeId: string,
+  title: string
+): Promise<{ id: string; criada: boolean }> {
+  if (routeId !== SESSAO_NOVA) return { id: routeId, criada: false };
+  const session = await createSession({ title });
+  return { id: session.id, criada: true };
+}
+
 export async function listMapSessions(): Promise<MapSession[]> {
   const res = await dbDriver.execute(
     `SELECT s.id, s.title, s.created_at,

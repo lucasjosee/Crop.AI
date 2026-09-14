@@ -11,12 +11,17 @@ vi.mock('expo-crypto', () => ({ randomUUID: mocks.uuid }));
 import {
   appendMessage,
   createSession,
+  ensureSession,
   findUnansweredUserMessage,
   getSession,
   getSessionDiseaseId,
   listMapSessions,
   listMessages,
+  listSessions,
+  renameSession,
+  SESSAO_NOVA,
   softDeleteSession,
+  TITULO_MAX,
   updateMessageAttachment,
 } from './chatRepository';
 
@@ -151,5 +156,87 @@ describe('chatRepository', () => {
     expect(sql).toContain('deleted_at IS NULL');
     expect(sql).toContain('latitude IS NOT NULL');
     expect(pins[0]).toMatchObject({ sessionId: 's1', latitude: -12.5, crossValidationStatus: 'DIVERGENT' });
+  });
+
+  it('listSessions mapeia a linha, exclui apagadas e ordena por updated_at', async () => {
+    mocks.execute.mockResolvedValueOnce(
+      rows([
+        {
+          id: 's1',
+          title: 'Ferrugem',
+          updated_at: '2026-09-13T10:00:00.000Z',
+          origin_diagnostic_local_id: 'd1',
+          message_count: 4,
+          last_message_content: 'Use o defensivo X',
+          last_message_role: 'assistant',
+        },
+      ])
+    );
+
+    const lista = await listSessions();
+
+    expect(lista).toEqual([
+      {
+        id: 's1',
+        title: 'Ferrugem',
+        updatedAt: '2026-09-13T10:00:00.000Z',
+        originDiagnosticLocalId: 'd1',
+        messageCount: 4,
+        lastMessageContent: 'Use o defensivo X',
+        lastMessageRole: 'assistant',
+      },
+    ]);
+
+    const [sql] = mocks.execute.mock.calls[0] as [string];
+    expect(sql).toContain('deleted_at IS NULL');
+    expect(sql).toContain('ORDER BY s.updated_at DESC');
+  });
+
+  it('renameSession faz trim, bump em updated_at e marca PENDING', async () => {
+    const titulo = await renameSession('s1', '  Talhão 7  ');
+
+    expect(titulo).toBe('Talhão 7');
+    const [sql, params] = mocks.execute.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('UPDATE chat_sessions');
+    expect(sql).toContain('updated_at = ?');
+    expect(sql).toContain("sync_status = 'PENDING'");
+    expect(params[0]).toBe('Talhão 7');
+    expect(params[2]).toBe('s1');
+  });
+
+  it('renameSession trunca em 255 — o limite da coluna no servidor', async () => {
+    const titulo = await renameSession('s1', 'x'.repeat(300));
+
+    expect(titulo).toHaveLength(TITULO_MAX);
+    const [, params] = mocks.execute.mock.calls[0] as [string, unknown[]];
+    expect(String(params[0])).toHaveLength(TITULO_MAX);
+  });
+
+  it('renameSession com título vazio não escreve e devolve o atual', async () => {
+    mocks.execute.mockResolvedValueOnce(rows([sessionRow]));
+
+    const titulo = await renameSession('s1', '   ');
+
+    expect(titulo).toBe('Ferrugem');
+    const updates = mocks.execute.mock.calls.filter(([sql]) =>
+      String(sql).includes('UPDATE chat_sessions')
+    );
+    expect(updates).toHaveLength(0);
+  });
+
+  it('ensureSession devolve o id da rota sem tocar o banco quando já existe', async () => {
+    const resultado = await ensureSession('s1', 'Título qualquer');
+
+    expect(resultado).toEqual({ id: 's1', criada: false });
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+
+  it('ensureSession cria a sessão quando a rota é o sentinela', async () => {
+    const resultado = await ensureSession(SESSAO_NOVA, 'Mancha na folha');
+
+    expect(resultado).toEqual({ id: '00000000-0000-4000-8000-00000000000a', criada: true });
+    const [sql, params] = mocks.execute.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('INSERT INTO chat_sessions');
+    expect(params).toEqual(expect.arrayContaining(['Mancha na folha']));
   });
 });
