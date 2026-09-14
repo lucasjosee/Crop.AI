@@ -48,4 +48,21 @@ describe('POST /api/v1/chat/stream (integration)', () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+  it('rejeita com 400 o contrato antigo (campo context)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/chat/stream',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      payload: {
+        session_id: '00000000-0000-4000-8000-000000000099',
+        message: 'Olá',
+        history: [],
+        context: { doenca_identificada: 'Ferrugem' },
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
 });

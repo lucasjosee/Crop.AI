@@ -8,7 +8,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
 
   fastify.post('/diagnostics', { config, preHandler: [authenticate] }, syncController.diagnostics);
   fastify.post('/feedback', { config, preHandler: [authenticate] }, syncController.feedback);
-  fastify.post('/slm-logs', { config, preHandler: [authenticate] }, syncController.slmLogs);
+  fastify.post('/conversations', { config, preHandler: [authenticate] }, syncController.conversations);
 }
 
 export default syncRoutes;

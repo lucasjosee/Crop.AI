@@ -4,19 +4,21 @@ import { syncCatalog } from './catalogSyncService';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { ensureDiagnosticImageUploaded } from './diagnosticImageUploadService';
+import { MAX_RETRIES, CLEANUP_DAYS, type StepResult } from './syncContracts';
+import { syncPendingConversations } from './conversationSyncService';
+import { sweepPendingSecondOpinions } from './pendingSecondOpinionService';
 
-export const MAX_RETRIES = 5;
-export const CLEANUP_DAYS = 30;
+export { MAX_RETRIES, CLEANUP_DAYS };
+export type { StepResult };
 
 type QueueRow = Record<string, any>;
-
-export interface StepResult { synced: number; failed: number }
 
 export interface FullSyncResult {
   ran: boolean;
   diagnostics: StepResult;
   feedbacks: StepResult;
-  slmLogs: StepResult;
+  conversations: StepResult;
+  secondOpinions: StepResult;
   catalogUpdated: boolean;
 }
 
@@ -24,7 +26,8 @@ const EMPTY_RESULT: FullSyncResult = {
   ran: false,
   diagnostics: { synced: 0, failed: 0 },
   feedbacks: { synced: 0, failed: 0 },
-  slmLogs: { synced: 0, failed: 0 },
+  conversations: { synced: 0, failed: 0 },
+  secondOpinions: { synced: 0, failed: 0 },
   catalogUpdated: false,
 };
 
@@ -157,31 +160,6 @@ export async function syncPendingFeedbacks(includeFailed = false): Promise<StepR
   return { synced: data.processed_count ?? 0, failed: data.failed_count ?? 0 };
 }
 
-export async function syncPendingSlmLogs(includeFailed = false): Promise<StepResult> {
-  const rows = await getQueueRows('fila_slm_logs', includeFailed);
-  if (rows.length === 0) return { synced: 0, failed: 0 };
-
-  const { data } = await api.post('/api/v1/sync/slm-logs', {
-    slm_sessions: rows.map((r) => ({
-      session_id: r.session_id,
-      started_at: toIso(r.started_at),
-      model_version: r.model_version,
-      interactions: JSON.parse(r.interactions_json || '[]'),
-    })),
-  });
-
-  if (data.status === 'success') {
-    for (const r of rows) {
-      await dbDriver.execute(
-        'UPDATE fila_slm_logs SET sync_status = ? WHERE session_id = ?;',
-        ['SYNCED', r.session_id]
-      );
-    }
-  }
-
-  return { synced: data.processed_count ?? 0, failed: 0 };
-}
-
 export async function cleanupSyncedRecords(): Promise<void> {
   const cutoff = new Date(Date.now() - CLEANUP_DAYS * 24 * 60 * 60 * 1000).toISOString();
   await dbDriver.execute(
@@ -190,10 +168,6 @@ export async function cleanupSyncedRecords(): Promise<void> {
   );
   await dbDriver.execute(
     "DELETE FROM fila_diagnosticos WHERE sync_status = 'SYNCED' AND datetime(timestamp) < datetime(?);",
-    [cutoff]
-  );
-  await dbDriver.execute(
-    "DELETE FROM fila_slm_logs WHERE sync_status = 'SYNCED' AND datetime(started_at) < datetime(?);",
     [cutoff]
   );
 }
@@ -213,11 +187,19 @@ export async function runFullSync(opts: { includeFailed?: boolean } = {}): Promi
     const includeFailed = opts.includeFailed ?? false;
     const diagnostics = await syncPendingDiagnostics(includeFailed);
     const feedbacks = await syncPendingFeedbacks(includeFailed);
-    const slmLogs = await syncPendingSlmLogs(includeFailed);
+    // Conversas depois dos diagnósticos: o servidor resolve o vínculo
+    // `diagnostico_id` na hora quando o diagnóstico já chegou.
+    const conversations = await syncPendingConversations(includeFailed);
+    const secondOpinions = await sweepPendingSecondOpinions();
     const catalog = await syncCatalog();
     await cleanupSyncedRecords();
-    console.log('[Sync] Sincronização concluída.', { diagnostics, feedbacks, slmLogs });
-    return { ran: true, diagnostics, feedbacks, slmLogs, catalogUpdated: catalog.updated };
+    console.log('[Sync] Sincronização concluída.', {
+      diagnostics, feedbacks, conversations, secondOpinions,
+    });
+    return {
+      ran: true, diagnostics, feedbacks, conversations, secondOpinions,
+      catalogUpdated: catalog.updated,
+    };
   } finally {
     syncInProgress = false;
   }

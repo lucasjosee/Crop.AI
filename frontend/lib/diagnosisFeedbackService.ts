@@ -1,7 +1,5 @@
 import * as Crypto from 'expo-crypto';
 import { dbDriver } from '../db/sqlite';
-import type { DiagnosticContext } from '../store/useChatStore';
-import type { InferenceResult } from './inference';
 
 export interface QueueFeedbackInput {
   diagnosticLocalId: string;
@@ -31,21 +29,15 @@ export async function queueDiagnosisFeedback(input: QueueFeedbackInput): Promise
   return id;
 }
 
-export function buildDiagnosticChatContext(
-  inference: InferenceResult,
-  diseaseName: string | null | undefined,
-  imageS3Key?: string | null
-): DiagnosticContext {
-  const specialName =
-    inference.diseaseId === 'Saudável'
-      ? 'Saudável'
-      : inference.diseaseId === 'Fitotoxicidade'
-        ? 'Fitotoxicidade'
-        : null;
-  return {
-    doenca_identificada: diseaseName ?? specialName ?? undefined,
-    cultura: 'Soja',
-    confianca_visao: inference.confidence,
-    image_s3_key: imageS3Key ?? undefined,
-  };
+/**
+ * O card de diagnóstico vive dentro de uma conversa que persiste, então
+ * "já avaliei isto" não pode ser estado de componente — sairia da tela e o
+ * app pediria a mesma avaliação de novo a cada abertura.
+ */
+export async function hasFeedback(diagnosticLocalId: string): Promise<boolean> {
+  const res = await dbDriver.execute(
+    'SELECT 1 FROM fila_feedbacks WHERE diagnostic_local_id = ? LIMIT 1;',
+    [diagnosticLocalId]
+  );
+  return res.rows.length > 0;
 }

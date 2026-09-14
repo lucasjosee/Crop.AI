@@ -30,6 +30,9 @@ export const cvStatusEnum = pgEnum('cv_status', [
 
 export const ragTypeEnum = pgEnum('rag_entity_type', ['DOENCA', 'DEFENSIVO']);
 
+export const mensagemPapelEnum = pgEnum('mensagem_papel', ['user', 'assistant']);
+export const mensagemOrigemEnum = pgEnum('mensagem_origem', ['LOCAL_SLM', 'CLOUD_LLM']);
+
 // Custom type for pgvector placeholder (v2)
 const pgVector = customType<{ data: number[] }>({
   dataType() {
@@ -214,41 +217,59 @@ export const feedbacksDiagnostico = pgTable(
   ]
 );
 
-// 9. sessoes_slm
-export const sessoesSlm = pgTable(
-  'sessoes_slm',
+// 9b. conversas — a conversa como unidade, substituindo sessoes_slm
+export const conversas = pgTable(
+  'conversas',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     userId: uuid('user_id')
       .references(() => usuarios.id, { onDelete: 'cascade' })
       .notNull(),
     mobileSessionId: uuid('mobile_session_id').notNull(),
-    modelVersion: varchar('model_version', { length: 100 }).notNull(),
-    startedAt: timestamp('started_at').notNull(),
-    endedAt: timestamp('ended_at').notNull(),
+    titulo: varchar('titulo', { length: 255 }).notNull(),
+    // Nulo enquanto o diagnóstico de origem não chegou: o sync manda
+    // diagnósticos antes, mas um item que falhou na validação deixa a conversa
+    // órfã. syncDiagnostics religa quando o diagnóstico entra.
+    diagnosticoId: uuid('diagnostico_id').references(() => diagnosticos.id, {
+      onDelete: 'set null',
+    }),
+    mobileDiagnosticLocalId: uuid('mobile_diagnostic_local_id'),
+    criadaEm: timestamp('criada_em').notNull(),
+    atualizadaEm: timestamp('atualizada_em').notNull(),
+    apagadaEm: timestamp('apagada_em'),
     syncedAt: timestamp('synced_at').defaultNow().notNull(),
   },
   (table) => [
-    index('idx_sessoes_slm_user_id').on(table.userId),
+    uniqueIndex('idx_conversas_user_mobile_session').on(table.userId, table.mobileSessionId),
+    index('idx_conversas_user_id').on(table.userId),
   ]
 );
 
-// 10. interacoes_slm
-export const interacoesSlm = pgTable(
-  'interacoes_slm',
+// 10b. mensagens — substitui interacoes_slm
+export const mensagens = pgTable(
+  'mensagens',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    sessaoId: uuid('sessao_id')
-      .references(() => sessoesSlm.id, { onDelete: 'cascade' })
+    conversaId: uuid('conversa_id')
+      .references(() => conversas.id, { onDelete: 'cascade' })
       .notNull(),
-    prompt: text('prompt').notNull(),
-    response: text('response').notNull(),
-    latencyMs: integer('latency_ms').notNull(),
-    ragUsedDocuments: jsonb('rag_used_documents').default([]).notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    // TEXT e não UUID: a migração v7 do aparelho fabricou ids derivados
+    // (`<session_id>-u0`) para não depender de expo-crypto dentro da migração.
+    // Declarar uuid faria toda mensagem herdada falhar na validação.
+    mobileMessageId: text('mobile_message_id').notNull(),
+    papel: mensagemPapelEnum('papel').notNull(),
+    conteudo: text('conteudo').notNull(),
+    origem: mensagemOrigemEnum('origem'),
+    // Só a chave do S3. O resultado do CV e o veredito da segunda opinião
+    // vivem em `diagnosticos` e mudam depois; uma cópia aqui envelheceria.
+    anexoS3Key: text('anexo_s3_key'),
+    latencyMs: integer('latency_ms'),
+    criadaEm: timestamp('criada_em').notNull(),
+    syncedAt: timestamp('synced_at').defaultNow().notNull(),
   },
   (table) => [
-    index('idx_interacoes_slm_sessao_id').on(table.sessaoId),
+    uniqueIndex('idx_mensagens_conversa_mobile_id').on(table.conversaId, table.mobileMessageId),
+    index('idx_mensagens_conversa').on(table.conversaId, table.criadaEm),
   ]
 );
 

@@ -27,8 +27,8 @@ import { theme } from '../config/theme';
 export default function HomeScreen() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
-  const { pendingDiagnostics, pendingFeedbacks, pendingSlmLogs, isSyncing, syncNow, refreshCounts } = useSyncStore();
-  const totalPending = pendingDiagnostics + pendingFeedbacks + pendingSlmLogs;
+  const { pendingDiagnostics, pendingFeedbacks, pendingConversations, isSyncing, syncNow, refreshCounts } = useSyncStore();
+  const totalPending = pendingDiagnostics + pendingFeedbacks + pendingConversations;
   const [activeTab, setActiveTab] = useState<'diagnostics' | 'encyclopedia'>('diagnostics');
   const [searchQuery, setSearchQuery] = useState('');
   

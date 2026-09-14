@@ -220,54 +220,57 @@ import { useChatStore } from './useChatStore';
 
 describe('useChatStore', () => {
   beforeEach(() => {
-    useChatStore.getState().clearHistory();
+    useChatStore.getState().resetStreaming();
+    useChatStore.getState().setActiveSession(null);
+    useChatStore.setState({ pendingResponses: {} });
+    useChatStore.getState().setModelLoadProgress(null);
   });
 
-  it('should add user message and return it', () => {
-    const msg = useChatStore.getState().addUserMessage('Olá');
-    expect(msg.role).toBe('user');
-    expect(msg.content).toBe('Olá');
-    expect(useChatStore.getState().history).toHaveLength(1);
-  });
-
-  it('should append streaming tokens and finalize', () => {
-    useChatStore.getState().addUserMessage('Pergunta');
+  it('acumula tokens em streamingContent e marca isStreaming', () => {
     useChatStore.getState().appendToStreaming('Resposta ');
     useChatStore.getState().appendToStreaming('final.');
+    expect(useChatStore.getState().isStreaming).toBe(true);
     expect(useChatStore.getState().streamingContent).toBe('Resposta final.');
+  });
 
-    useChatStore.getState().finalizeStreaming('CLOUD_LLM');
-    expect(useChatStore.getState().history).toHaveLength(2);
-    expect(useChatStore.getState().history[1].source).toBe('CLOUD_LLM');
+  it('resetStreaming limpa o conteúdo e o estado', () => {
+    useChatStore.getState().appendToStreaming('x');
+    useChatStore.getState().resetStreaming();
+    expect(useChatStore.getState().isStreaming).toBe(false);
     expect(useChatStore.getState().streamingContent).toBe('');
   });
 
-  it('getCloudHistory should return max 20 non-system messages', () => {
-    for (let i = 0; i < 25; i++) {
-      useChatStore.getState().addUserMessage(`msg ${i}`);
-    }
-    const cloudHistory = useChatStore.getState().getCloudHistory();
-    expect(cloudHistory.length).toBe(20);
+  it('não guarda histórico — ele vive no SQLite', () => {
+    expect(useChatStore.getState()).not.toHaveProperty('history');
+    expect(useChatStore.getState()).not.toHaveProperty('addUserMessage');
+    expect(useChatStore.getState()).not.toHaveProperty('condenseForSlm');
+    expect(useChatStore.getState()).not.toHaveProperty('logSlmInteraction');
   });
 
-  it('getSlmHistory should return max 10 non-system messages', () => {
-    for (let i = 0; i < 15; i++) {
-      useChatStore.getState().addUserMessage(`msg ${i}`);
-    }
-    const slmHistory = useChatStore.getState().getSlmHistory();
-    expect(slmHistory.length).toBe(10);
+  it('pendingResponses é por sessão: limpar uma não limpa a outra', () => {
+    const store = useChatStore.getState();
+
+    store.marcarRespostaEmVoo('s1');
+    store.marcarRespostaEmVoo('s2');
+    expect(useChatStore.getState().pendingResponses).toEqual({ s1: true, s2: true });
+
+    useChatStore.getState().limparRespostaEmVoo('s1');
+    expect(useChatStore.getState().pendingResponses).toEqual({ s2: true });
   });
 
-  it('condenseForSlm should truncate to 10 messages and add system note', () => {
-    for (let i = 0; i < 15; i++) {
-      useChatStore.getState().addUserMessage(`msg ${i}`);
-    }
-    useChatStore.getState().condenseForSlm();
-    const { history } = useChatStore.getState();
-    const nonSystem = history.filter(m => m.role !== 'system');
-    const systemMessages = history.filter(m => m.role === 'system');
-    expect(nonSystem.length).toBe(10);
-    expect(systemMessages.length).toBe(1);
-    expect(systemMessages[0].content).toContain('modo offline');
+  it('limpar sessão que não está em voo não altera o estado', () => {
+    useChatStore.setState({ pendingResponses: { s2: true } });
+    const antes = useChatStore.getState().pendingResponses;
+
+    useChatStore.getState().limparRespostaEmVoo('inexistente');
+
+    expect(useChatStore.getState().pendingResponses).toBe(antes);
+  });
+
+  it('modelLoadProgress é o canal do carregamento do .gguf para a UI', () => {
+    useChatStore.getState().setModelLoadProgress(0.4);
+    expect(useChatStore.getState().modelLoadProgress).toBe(0.4);
+    useChatStore.getState().setModelLoadProgress(null);
+    expect(useChatStore.getState().modelLoadProgress).toBeNull();
   });
 });

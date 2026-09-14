@@ -11,7 +11,7 @@ vi.mock('expo-crypto', () => ({ randomUUID: () => 'feedback-uuid' }));
 vi.mock('../db/sqlite', () => ({ dbDriver: { execute: mocks.execute } }));
 
 import {
-  buildDiagnosticChatContext,
+  hasFeedback,
   queueDiagnosisFeedback,
 } from './diagnosisFeedbackService';
 
@@ -38,17 +38,23 @@ describe('diagnosisFeedbackService', () => {
     ]));
   });
 
-  it('monta o contexto diagnóstico → chat, incluindo especiais e image_s3_key disponível', () => {
-    const healthy = buildDiagnosticChatContext(
-      { diseaseId: 'Saudável', confidence: 0.97, inferenceTimeMs: 30, modelUsed: 'tflite_v1.0' },
-      null,
-      'diagnosticos/user/leaf.jpg'
-    );
-    expect(healthy).toEqual({
-      doenca_identificada: 'Saudável',
-      cultura: 'Soja',
-      confianca_visao: 0.97,
-      image_s3_key: 'diagnosticos/user/leaf.jpg',
-    });
+  it('hasFeedback devolve true quando já existe avaliação para o diagnóstico', async () => {
+    // mockResolvedValueOnce e mock.calls[0] herdam o tipo do fake default acima
+    // (vi.fn(async () => ({ rows: { _array: [] ... } }))); os casts aqui seguem
+    // o mesmo "as unknown as" já usado nos outros arquivos de teste do banco.
+    mocks.execute.mockResolvedValueOnce({
+      rows: { _array: [{ um: 1 }], length: 1, item: () => ({ um: 1 }) },
+      rowsAffected: 0,
+    } as any);
+
+    expect(await hasFeedback('diagnostic-local-1')).toBe(true);
+
+    const [sql, params] = mocks.execute.mock.calls[0] as unknown as [string, unknown[]];
+    expect(sql).toContain('FROM fila_feedbacks');
+    expect(params).toEqual(['diagnostic-local-1']);
+  });
+
+  it('hasFeedback devolve false quando o diagnóstico ainda não foi avaliado', async () => {
+    expect(await hasFeedback('diagnostic-local-1')).toBe(false);
   });
 });

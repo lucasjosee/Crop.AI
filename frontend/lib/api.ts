@@ -20,25 +20,44 @@ export const api = axios.create({
   },
 });
 
-let isRefreshing = false;
-let failedRequestsQueue: Array<{
-  resolve: (token: string) => void;
-  reject: (err: any) => void;
-}> = [];
+let refreshInFlight: Promise<string> | null = null;
 
-// Processa a fila de requisições concorrentes que aguardavam a rotação do token
-const processQueue = (error: any, token: string | null = null) => {
-  failedRequestsQueue.forEach((promise) => {
-    if (error) {
-      promise.reject(error);
-    } else if (token) {
-      promise.resolve(token);
-    } else {
-      promise.reject(new Error('Token refresh failed silently'));
+/**
+ * Rotaciona o par de tokens. Chamadas concorrentes compartilham a mesma
+ * requisição: apresentar o mesmo refresh token duas vezes faz o servidor
+ * detectar reuso e revogar todas as sessões do usuário. É o único caminho de
+ * refresh do app — o interceptor do axios e o CloudEngine passam por aqui.
+ */
+export function refreshAccessToken(): Promise<string> {
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    // Declarado fora do try para continuar acessível no catch; só fica
+    // undefined se o próprio import dinâmico rejeitar (inalcançável hoje —
+    // módulo local, já no bundle).
+    let useAuthStore: (typeof import('../store/useAuthStore'))['useAuthStore'] | undefined;
+    try {
+      // import dinâmico preguiçoso evita o ciclo api.ts <-> useAuthStore.ts
+      ({ useAuthStore } = await import('../store/useAuthStore'));
+      const refreshToken = await secureStorage.getItem('refresh_token');
+      if (!refreshToken) {
+        throw new Error('Refresh token não encontrado no Secure Store local.');
+      }
+      const response = await api.post('/api/v1/auth/refresh', { refresh_token: refreshToken });
+      const { access_token, refresh_token: newRefreshToken } = response.data;
+      await useAuthStore.getState().setTokens(access_token, newRefreshToken);
+      return access_token as string;
+    } catch (error) {
+      console.warn('[API] Falha na rotação do refresh token. Forçando logout.');
+      await useAuthStore?.getState().logout();
+      throw error;
+    } finally {
+      refreshInFlight = null;
     }
-  });
-  failedRequestsQueue = [];
-};
+  })();
+
+  return refreshInFlight;
+}
 
 // Interceptor de Requisição - Adiciona Token JWT
 api.interceptors.request.use(
@@ -77,58 +96,12 @@ api.interceptors.response.use(
     // Se retornar 401 e for expirado
     if (status === 401 && errorCode === 'TOKEN_EXPIRED' && !originalRequest._retry) {
       originalRequest._retry = true;
-
-      // Se já houver uma rotação de token em andamento, enfileira a requisição concorrente
-      if (isRefreshing) {
-        return new Promise<string>((resolve, reject) => {
-          failedRequestsQueue.push({ resolve, reject });
-        })
-          .then((token) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            return api(originalRequest);
-          })
-          .catch((err) => {
-            return Promise.reject(err);
-          });
-      }
-
-      isRefreshing = true;
-
       try {
-        const refreshToken = await secureStorage.getItem('refresh_token');
-        if (!refreshToken) {
-          throw new Error('Refresh token não encontrado no Secure Store local.');
-        }
-
-        console.log('[API Interceptor] Access Token expirado. Solicitando rotação de token...');
-        const response = await api.post('/api/v1/auth/refresh', {
-          refresh_token: refreshToken,
-        });
-
-        const { access_token, refresh_token: new_refresh_token } = response.data;
-
-        // Atualiza a store global e o Secure Store com o novo par de tokens de forma atômica
-        const { useAuthStore } = require('../store/useAuthStore');
-        await useAuthStore.getState().setTokens(access_token, new_refresh_token);
-
-        // Desbloqueia e re-executa todas as requisições concorrentes pendentes na fila
-        processQueue(null, access_token);
-
-        // Atualiza a requisição original falhada e a executa novamente
-        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        const token = await refreshAccessToken();
+        originalRequest.headers.Authorization = `Bearer ${token}`;
         return api(originalRequest);
-      } catch (refreshError: any) {
-        // Se a rotação falhar (ex: 403 REFRESH_DENIED), rejeita toda a fila de espera
-        processQueue(refreshError, null);
-
-        // Força deslogar limpando o estado do app e chaves locais
-        console.warn('[API Interceptor] Falha crítica na rotação do Refresh Token. Forçando logout.');
-        const { useAuthStore } = require('../store/useAuthStore');
-        await useAuthStore.getState().logout();
-
+      } catch (refreshError) {
         return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
       }
     }
 

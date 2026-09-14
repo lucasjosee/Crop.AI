@@ -61,28 +61,39 @@ export const syncFeedbackSchema = z.object({
     .max(50),
 });
 
-export const syncSlmLogsSchema = z.object({
-  slm_sessions: z
-    .array(
-      z.object({
-        session_id: z.string().uuid(),
-        started_at: z.string(),
-        ended_at: z.string().optional(),
-        model_version: z.string().min(1),
-        interactions: z.array(
-          z.object({
-            prompt: z.string(),
-            response: z.string(),
-            latency_ms: z.number().int(),
-            rag_used_documents: z.array(z.unknown()).default([]),
-          })
-        ),
-      })
-    )
-    .min(1)
-    .max(20),
-});
-
 export type SyncDiagnosticsInput = z.infer<typeof syncDiagnosticsSchema>;
 export type SyncFeedbackInput = z.infer<typeof syncFeedbackSchema>;
-export type SyncSlmLogsInput = z.infer<typeof syncSlmLogsSchema>;
+
+export const conversationMessageSchema = z.object({
+  message_id: z.string().min(1).max(100),
+  role: z.enum(['user', 'assistant']),
+  // String vazia é legítima: a foto vira mensagem do usuário sem texto nenhum.
+  content: z.string(),
+  source: z.enum(['LOCAL_SLM', 'CLOUD_LLM']).nullable().optional(),
+  attachment_s3_key: z.string().min(1).nullable().optional(),
+  latency_ms: z.number().int().nullable().optional(),
+  created_at: parsableTimestamp,
+});
+
+export const conversationItemSchema = z.object({
+  session_id: z.string().uuid(),
+  title: z.string().min(1).max(255),
+  origin_diagnostic_local_id: z.string().uuid().nullable().optional(),
+  created_at: parsableTimestamp,
+  updated_at: parsableTimestamp,
+  deleted_at: parsableTimestamp.nullable().optional(),
+  // Vazio é legítimo: sessão renomeada ou apagada não tem mensagem nova.
+  messages: z.array(conversationMessageSchema).max(200),
+});
+
+/**
+ * O envelope valida só a forma do lote. Cada conversa é validada dentro do
+ * serviço, para que uma malformada vire `failed_item` em vez de derrubar as
+ * outras 19 que viajam com ela.
+ */
+export const syncConversationsSchema = z.object({
+  conversations: z.array(z.unknown()).min(1).max(20),
+});
+
+export type ConversationItem = z.infer<typeof conversationItemSchema>;
+export type SyncConversationsInput = z.infer<typeof syncConversationsSchema>;

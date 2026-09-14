@@ -401,6 +401,155 @@ export async function runMigrationsAndSeed(driver: IDatabaseDriver) {
     console.log('[Database] Migration to version 6 complete.');
   }
 
+  if (version < 7) {
+    console.log('[Database] Migrating to version 7: conversas persistidas...');
+
+    await driver.execute(`
+      CREATE TABLE IF NOT EXISTS chat_sessions (
+        id                          TEXT PRIMARY KEY,
+        title                       TEXT NOT NULL,
+        origin_diagnostic_local_id  TEXT REFERENCES fila_diagnosticos(local_id),
+        created_at                  TEXT NOT NULL,
+        updated_at                  TEXT NOT NULL,
+        deleted_at                  TEXT,
+        sync_status                 TEXT NOT NULL DEFAULT 'PENDING'
+                                    CHECK(sync_status IN ('PENDING','SYNCING','SYNCED','FAILED')),
+        retry_count                 INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+
+    await driver.execute(`
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id               TEXT PRIMARY KEY,
+        session_id       TEXT NOT NULL REFERENCES chat_sessions(id),
+        role             TEXT NOT NULL CHECK(role IN ('user','assistant')),
+        content          TEXT NOT NULL,
+        source           TEXT CHECK(source IN ('LOCAL_SLM','CLOUD_LLM')),
+        attachment_json  TEXT,
+        latency_ms       INTEGER,
+        created_at       TEXT NOT NULL,
+        sync_status      TEXT NOT NULL DEFAULT 'PENDING'
+                         CHECK(sync_status IN ('PENDING','SYNCING','SYNCED','FAILED')),
+        retry_count      INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+
+    await driver.execute(
+      'CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, created_at);'
+    );
+    await driver.execute(
+      'CREATE INDEX IF NOT EXISTS idx_chat_sessions_origin ON chat_sessions(origin_diagnostic_local_id);'
+    );
+
+    // Migra o que existe em fila_slm_logs. Tudo nasce PENDING, mesmo o que já
+    // tinha subido pelo /sync/slm-logs: as tabelas de conversa no servidor só
+    // existem no sub-projeto 4, e é para elas que precisa ir.
+    const legacy = await driver.execute('SELECT * FROM fila_slm_logs;');
+    for (const row of legacy.rows._array as Array<Record<string, any>>) {
+      let interactions: Array<{ prompt?: string; response?: string; latency_ms?: number }> = [];
+      try {
+        interactions = JSON.parse(row.interactions_json || '[]');
+      } catch {
+        interactions = [];
+      }
+      // JSON válido que não é array ("{}", "null", "42") cai na mesma regra de
+      // "sem interações": pular, nunca abortar a migração do aparelho inteiro.
+      if (!Array.isArray(interactions) || interactions.length === 0) continue;
+
+      const startedAt: string = row.started_at || new Date().toISOString();
+      const title = String(interactions[0].prompt ?? 'Conversa').slice(0, 60);
+      await driver.execute(
+        `INSERT OR IGNORE INTO chat_sessions
+           (id, title, origin_diagnostic_local_id, created_at, updated_at, deleted_at, sync_status, retry_count)
+         VALUES (?, ?, NULL, ?, ?, NULL, 'PENDING', 0);`,
+        [row.session_id, title, startedAt, startedAt]
+      );
+
+      // IDs derivados do session_id: únicos, determinísticos e sem depender de
+      // expo-crypto dentro da migração.
+      const base = Date.parse(startedAt) || Date.now();
+      for (const [index, it] of interactions.entries()) {
+        const userAt = new Date(base + index * 2).toISOString();
+        const assistantAt = new Date(base + index * 2 + 1).toISOString();
+        await driver.execute(
+          `INSERT INTO chat_messages
+             (id, session_id, role, content, source, attachment_json, latency_ms, created_at, sync_status, retry_count)
+           VALUES (?, ?, 'user', ?, NULL, NULL, NULL, ?, 'PENDING', 0);`,
+          [`${row.session_id}-u${index}`, row.session_id, String(it.prompt ?? ''), userAt]
+        );
+        await driver.execute(
+          `INSERT INTO chat_messages
+             (id, session_id, role, content, source, attachment_json, latency_ms, created_at, sync_status, retry_count)
+           VALUES (?, ?, 'assistant', ?, 'LOCAL_SLM', NULL, ?, ?, 'PENDING', 0);`,
+          [`${row.session_id}-a${index}`, row.session_id, String(it.response ?? ''), it.latency_ms ?? null, assistantAt]
+        );
+      }
+    }
+
+    await driver.execute('PRAGMA user_version = 7;');
+    console.log('[Database] Migration to version 7 complete.');
+  }
+
+  if (version < 8) {
+    console.log('[Database] Migrating to version 8: a fila de conversas assume o sync...');
+
+    // Contador próprio: `retry_count` é da fila de sync. Misturar as duas
+    // contagens na mesma coluna faria um upload falho gastar a tentativa da
+    // segunda opinião, e vice-versa.
+    try {
+      await driver.execute(
+        'ALTER TABLE fila_diagnosticos ADD COLUMN cross_validation_retry_count INTEGER NOT NULL DEFAULT 0;'
+      );
+    } catch {
+      console.warn('[Database] cross_validation_retry_count might already exist.');
+    }
+
+    // A v7 já copiou o conteúdo desta tabela para chat_sessions/chat_messages.
+    // Com o /sync/slm-logs aposentado, manter a tabela só deixaria as linhas
+    // originais PENDING para sempre — o caminho da dupla sincronização.
+    await driver.execute('DROP TABLE IF EXISTS fila_slm_logs;');
+
+    await driver.execute('PRAGMA user_version = 8;');
+    console.log('[Database] Migration to version 8 complete.');
+  }
+
+  if (version < 9) {
+    console.log('[Database] Migrating to version 9: limpando conversas vazias...');
+
+    // `/chat` criava uma sessão a cada mount e redirecionava, então todo
+    // aparelho que rodou o app tem conversas vazias. A partir daqui a conversa
+    // livre só nasce na primeira mensagem, mas o que o bug já criou precisa
+    // sair — senão a lista nasce suja.
+    //
+    // `origin_diagnostic_local_id IS NULL` protege a conversa de foto: ela
+    // sempre tem mensagem, mas se a criação parcial do sub-projeto 3 deixar
+    // uma sem, ela não é lixo deste bug e não deve sumir.
+    // Apagamos as que nunca saíram do aparelho: PENDING (sem sincronizar) e
+    // FAILED (tentaram cinco vezes e nunca chegaram ao servidor).
+    await driver.execute(`
+      DELETE FROM chat_sessions
+       WHERE sync_status IN ('PENDING', 'FAILED')
+         AND deleted_at IS NULL
+         AND origin_diagnostic_local_id IS NULL
+         AND NOT EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = chat_sessions.id);
+    `);
+
+    // A que já subiu não pode simplesmente sumir daqui: sem o tombstone, o
+    // servidor ficaria com a conversa vazia para sempre.
+    await driver.execute(`
+      UPDATE chat_sessions
+         SET deleted_at = datetime('now'),
+             updated_at = datetime('now'),
+             sync_status = 'PENDING'
+       WHERE sync_status = 'SYNCED'
+         AND deleted_at IS NULL
+         AND origin_diagnostic_local_id IS NULL
+         AND NOT EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = chat_sessions.id);
+    `);
+
+    await driver.execute('PRAGMA user_version = 9;');
+    console.log('[Database] Migration to version 9 complete.');
+  }
 }
 
 // -------------------------------------------------------------
