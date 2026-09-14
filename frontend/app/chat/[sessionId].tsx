@@ -278,8 +278,16 @@ export default function ChatSessionScreen() {
     // `id` e não `sessionId`: depois do replace o parâmetro da rota muda, mas
     // esta closure continua com o valor antigo.
     const userMessage = await appendMessage({ sessionId: id, role: 'user', content: text });
-    await reload(id);
+
+    // Disparar antes do reload fecha a fresta em que a mensagem já está no
+    // banco mas a sessão ainda não está marcada como respondendo: o efeito
+    // de carregamento, re-executado pelo router.replace, encontraria a
+    // mensagem sem resposta e mostraria um erro falso.
+    // `requestResponse` é fire-and-forget e marca a sessão de forma síncrona,
+    // antes do primeiro await dela; e não depende do reload, porque busca o
+    // histórico por conta própria.
     void requestResponse(userMessage, id);
+    await reload(id);
   }, [input, isBusy, sessionId, reload, requestResponse, router]);
 
   const retry = useCallback(() => {
