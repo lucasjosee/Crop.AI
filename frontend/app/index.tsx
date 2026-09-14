@@ -140,7 +140,7 @@ export default function HomeScreen() {
           accessibilityLabel={
             mapa.total === 0
               ? 'Nenhuma análise localizada ainda'
-              : `${mapa.total} análises mapeadas, ${mapa.problemas} com problema`
+              : `${mapa.total} ${mapa.total === 1 ? 'análise mapeada' : 'análises mapeadas'}, ${mapa.problemas} com problema`
           }
         >
           {mapa.total === 0 ? (
@@ -163,7 +163,9 @@ export default function HomeScreen() {
                 </View>
                 <View style={styles.mapaContagem}>
                   <View style={[styles.ponto, { backgroundColor: theme.colors.primary }]} />
-                  <Text style={styles.mapaContagemTexto}>{mapa.saudaveis} saudáveis</Text>
+                  <Text style={styles.mapaContagemTexto}>
+                    {mapa.saudaveis} {mapa.saudaveis === 1 ? 'saudável' : 'saudáveis'}
+                  </Text>
                 </View>
               </View>
             </>
