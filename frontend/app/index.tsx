@@ -1,227 +1,87 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  SafeAreaView, 
-  TouchableOpacity, 
-  TextInput, 
-  Platform,
-  Image,
-  ActivityIndicator
-} from 'react-native';
-import Toast from 'react-native-toast-message';
+// frontend/app/index.tsx
+// A Home é o resumo do app: blocos de prévia empilhados, e o produtor decide
+// dali para onde ir. Até o sub-projeto 7 esta era a única tela que a
+// reformulação não tinha tocado — tinha duas abas, busca e uma barra inferior
+// falsa, e mostrava um mundo em que a foto não virava conversa.
+//
+// Duas consultas, nenhuma dentro de laço: `listSessions(3)` e `listMapSessions`.
+// O bloco do mapa é contagem e não `MapView` — funciona offline e não depende
+// da chave do Google Maps, que ainda não foi provisionada para Android.
+import { useCallback, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect } from 'expo-router';
-import * as Crypto from 'expo-crypto';
+import Toast from 'react-native-toast-message';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
-import { useSyncStore } from '../store/useSyncStore';
-import { dbDriver } from '../db/sqlite';
-import { Button } from '../components/Button';
-import { Card } from '../components/Card';
-import { Badge } from '../components/Badge';
+import { listSessions, listMapSessions, type SessionListItem } from '../lib/chatRepository';
+import { resumoDoMapa, type ResumoMapa } from '../lib/mapPins';
+import { ItemConversa } from '../components/ItemConversa';
 import { ConnectionIndicator } from '../components/ConnectionIndicator';
 import { theme } from '../config/theme';
 
+const CONVERSAS_NA_HOME = 3;
+
 export default function HomeScreen() {
   const router = useRouter();
-  const { user, logout } = useAuthStore();
-  const { pendingDiagnostics, pendingFeedbacks, pendingConversations, isSyncing, syncNow, refreshCounts } = useSyncStore();
-  const totalPending = pendingDiagnostics + pendingFeedbacks + pendingConversations;
-  const [activeTab, setActiveTab] = useState<'diagnostics' | 'encyclopedia'>('diagnostics');
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  const [diagnostics, setDiagnostics] = useState<any[]>([]);
-  const [diseases, setDiseases] = useState<any[]>([]);
-  const [dbLoading, setDbLoading] = useState(false);
+  const { logout } = useAuthStore();
+  const [conversas, setConversas] = useState<SessionListItem[]>([]);
+  const [mapa, setMapa] = useState<ResumoMapa>({ total: 0, problemas: 0, saudaveis: 0 });
+  const [carregando, setCarregando] = useState(true);
 
-  // Load database seed data on focus/mount
+  const recarregar = useCallback(async () => {
+    try {
+      const [recentes, linhasDoMapa] = await Promise.all([
+        listSessions(CONVERSAS_NA_HOME),
+        listMapSessions(),
+      ]);
+      setConversas(recentes);
+      setMapa(resumoDoMapa(linhasDoMapa));
+    } catch (erro) {
+      // Resumo vazio é melhor que tela quebrada: os botões continuam levando
+      // o produtor à câmera e às conversas.
+      console.warn('[Home] Falha ao carregar o resumo.', erro);
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  // A cada foco: voltar da câmera precisa somar a análise nova ao mapa, e
+  // voltar de uma conversa precisa refletir a mensagem nova na prévia.
   useFocusEffect(
     useCallback(() => {
-      loadData();
-      refreshCounts();
-    }, [])
+      void recarregar();
+    }, [recarregar])
   );
 
-  const loadData = async () => {
-    try {
-      setDbLoading(true);
-      
-      // 1. Load diseases for encyclopedia and lookup
-      const diseasesRes = await dbDriver.execute('SELECT * FROM doencas;');
-      const diseasesList = [];
-      for (let i = 0; i < diseasesRes.rows.length; i++) {
-        diseasesList.push(diseasesRes.rows.item(i));
-      }
-      setDiseases(diseasesList);
-
-      // 2. Load diagnostics history from local SQLite queue
-      const diagRes = await dbDriver.execute('SELECT * FROM fila_diagnosticos;');
-      const diagList = [];
-      for (let i = 0; i < diagRes.rows.length; i++) {
-        diagList.push(diagRes.rows.item(i));
-      }
-      
-      // Sort newest first
-      diagList.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
-      setDiagnostics(diagList);
-
-    } catch {
-      console.error('[HomeScreen] Failed to read local DB.');
-      Toast.show({
-        type: 'error',
-        text1: 'Erro de Banco de Dados',
-        text2: 'Não foi possível carregar os dados locais.',
-      });
-    } finally {
-      setDbLoading(false);
-    }
-  };
-
-  const handleAddMockDiagnostic = async () => {
-    try {
-      const mockId = Crypto.randomUUID();
-      // Alternates between Ferrugem Asiática and Mancha Alvo — real UUIDs from seeds
-      const targetDisease = Math.random() > 0.5
-        ? '3f34559c-6a12-4eb2-a42e-cf629ec2e9e6'  // Ferrugem Asiática
-        : '5be520ca-a6fc-46cd-ae38-fc62157a44f1'; // Mancha Alvo
-      const confidence = parseFloat((0.85 + Math.random() * 0.14).toFixed(2));
-      
-      // Inserir registro mockado na fila local do SQLite (Store & Forward)
-      await dbDriver.execute(
-        `INSERT INTO fila_diagnosticos (
-          local_id, server_id, image_uri, image_s3_key, latitude, longitude, 
-          doenca_id, confianca_ia, modelo_usado, tempo_inferencia_ms, sync_status, retry_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-        [
-          mockId,
-          null, // server_id pendente
-          Math.random() > 0.4 ? 'https://picsum.photos/id/10/64/64' : 'file:///mock/path/diagnostico_folha.jpg',
-          null, // s3 key pendente
-          -23.55052,
-          -46.633309,
-          targetDisease,
-          confidence,
-          'tflite_v1.0',
-          Math.floor(25 + Math.random() * 20), // 25-45ms inferência
-          'PENDING',
-          0
-        ]
-      );
-
-      await loadData();
-      
-      Toast.show({
-        type: 'success',
-        text1: 'Diagnóstico Enfileirado!',
-        text2: 'Salvo localmente com sucesso (offline-first).',
-      });
-    } catch {
-      console.error('[HomeScreen] Failed to save mock diagnostic.');
-      Toast.show({
-        type: 'error',
-        text1: 'Erro de Banco',
-        text2: 'Falha ao salvar diagnóstico localmente.',
-      });
-    }
-  };
-
-  const handleSyncNow = async () => {
-    await syncNow({ manual: true });
-    const { lastError } = useSyncStore.getState();
-    await loadData();
-    if (lastError) {
-      Toast.show({ type: 'error', text1: 'Falha na sincronização', text2: lastError });
-    } else {
-      Toast.show({ type: 'success', text1: 'Sincronização concluída', text2: 'Dados enviados ao servidor.' });
-    }
-  };
-
-  const handleLogout = async () => {
+  const sair = useCallback(async () => {
     try {
       await logout();
-      Toast.show({
-        type: 'success',
-        text1: 'Sessão Encerrada',
-        text2: 'Logout efetuado com sucesso.',
-      });
-    } catch (err) {
-      Toast.show({
-        type: 'error',
-        text1: 'Erro ao sair',
-        text2: 'Não foi possível encerrar a sessão.',
-      });
-    }
-  };
-
-  const getDiseaseName = (doencaId: string) => {
-    const disease = diseases.find(d => d.id === doencaId);
-    return disease ? disease.nome_comum : 'Diagnóstico Geral';
-  };
-
-  const getDiseaseScientific = (doencaId: string) => {
-    const disease = diseases.find(d => d.id === doencaId);
-    return disease ? disease.nome_cientifico : '';
-  };
-
-  const getSeverityColorType = (level: number): 'success' | 'warning' | 'error' => {
-    if (level <= 2) return 'success';
-    if (level <= 3) return 'warning';
-    return 'error';
-  };
-
-  const getSeverityLabel = (level: number) => {
-    if (level <= 2) return 'Severidade Baixa';
-    if (level <= 3) return 'Severidade Média';
-    return 'Severidade Alta';
-  };
-
-  const formatDate = (isoString: string) => {
-    if (!isoString) return '';
-    try {
-      const date = new Date(isoString);
-      const day = String(date.getDate()).padStart(2, '0');
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const year = date.getFullYear();
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      return `${day}/${month}/${year} às ${hours}:${minutes}`;
+      Toast.show({ type: 'success', text1: 'Sessão encerrada' });
     } catch {
-      return isoString;
+      Toast.show({ type: 'error', text1: 'Não foi possível sair', text2: 'Tente novamente.' });
     }
-  };
-
-  // Real-time filter logic
-  const filteredDiagnostics = diagnostics.filter(item => {
-    const diseaseName = getDiseaseName(item.doenca_id).toLowerCase();
-    const query = searchQuery.toLowerCase();
-    return diseaseName.includes(query) || (item.timestamp && item.timestamp.includes(query));
-  });
-
-  const filteredDiseases = diseases.filter(item => {
-    const query = searchQuery.toLowerCase();
-    return (
-      item.nome_comum.toLowerCase().includes(query) ||
-      (item.nome_cientifico && item.nome_cientifico.toLowerCase().includes(query)) ||
-      (item.sintomas && item.sintomas.toLowerCase().includes(query))
-    );
-  });
+  }, [logout]);
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Top Header */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Ionicons name="leaf" size={26} color={theme.colors.primary} style={styles.logoIcon} />
+        <View style={styles.headerEsquerda}>
+          <Ionicons name="leaf" size={26} color={theme.colors.primary} />
           <Text style={styles.logo}>Crop.AI</Text>
         </View>
-        <View style={styles.headerRight}>
+        <View style={styles.headerDireita}>
           <ConnectionIndicator />
-          <TouchableOpacity 
-            onPress={handleLogout} 
-            style={styles.logoutBtn} 
-            activeOpacity={0.7}
+          <TouchableOpacity
+            onPress={() => router.push('/catalogo')}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="Abrir o catálogo de doenças"
+          >
+            <Ionicons name="book-outline" size={24} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => void sair()}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             accessibilityRole="button"
             accessibilityLabel="Sair da conta"
@@ -231,533 +91,173 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Pill Search Bar */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={20} color={theme.colors.textSecondary} style={styles.searchIcon} />
-          <TextInput
-            placeholder={activeTab === 'diagnostics' ? "Buscar diagnósticos..." : "Buscar na enciclopédia..."}
-            placeholderTextColor={theme.colors.textSecondary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            style={styles.searchInput}
-            accessibilityLabel={activeTab === 'diagnostics' ? 'Buscar diagnósticos' : 'Buscar doenças no catálogo'}
-          />
-          {searchQuery ? (
-            <TouchableOpacity 
-              onPress={() => setSearchQuery('')} 
-              style={styles.clearSearchBtn}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityRole="button"
-              accessibilityLabel="Limpar busca"
-            >
-              <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      </View>
-
-      {/* Active Tab Menu */}
-      <View style={styles.tabContainer}>
+      <ScrollView contentContainerStyle={styles.conteudo} showsVerticalScrollIndicator={false}>
+        {/* Bloco: conversas */}
         <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'diagnostics' && styles.tabButtonActive]}
-          onPress={() => {
-            setActiveTab('diagnostics');
-            setSearchQuery('');
-          }}
-          activeOpacity={0.7}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: activeTab === 'diagnostics' }}
-        >
-          <Text style={[styles.tabButtonText, activeTab === 'diagnostics' && styles.tabButtonTextActive]}>
-            Meus Diagnósticos
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'encyclopedia' && styles.tabButtonActive]}
-          onPress={() => {
-            setActiveTab('encyclopedia');
-            setSearchQuery('');
-          }}
-          activeOpacity={0.7}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: activeTab === 'encyclopedia' }}
-        >
-          <Text style={[styles.tabButtonText, activeTab === 'encyclopedia' && styles.tabButtonTextActive]}>
-            Enciclopédia de Doenças
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Content Area */}
-      {dbLoading && diagnostics.length === 0 ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={styles.loadingText}>Acessando base de dados criptografada...</Text>
-        </View>
-      ) : (
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent} 
-          showsVerticalScrollIndicator={false}
-        >
-          {activeTab === 'diagnostics' ? (
-            // ABA 1: MEUS DIAGNÓSTICOS
-            <View>
-              {/* Quick Actions Panel */}
-              <View style={styles.welcomeBanner}>
-                <View style={styles.welcomeTextBlock}>
-                  <Text style={styles.welcomeTitle}>Olá, {user?.nome?.split(' ')[0] || 'Produtor'}</Text>
-                  <Text style={styles.welcomeSubtitle}>
-                    {totalPending > 0
-                      ? `Você tem ${totalPending} ${totalPending === 1 ? 'item' : 'itens'} para sincronizar`
-                      : 'Todos os dados sincronizados'}
-                  </Text>
-                  {totalPending > 0 && (
-                    <Button
-                      title={isSyncing ? 'Sincronizando...' : 'Sincronizar agora'}
-                      onPress={isSyncing ? () => {} : handleSyncNow}
-                      variant="primary"
-                      style={styles.syncBtn}
-                      textStyle={styles.mockAddBtnText}
-                    />
-                  )}
-                </View>
-                {__DEV__ && (
-                  <Button
-                    title="+ Novo Offline (Mock)"
-                    onPress={handleAddMockDiagnostic}
-                    variant="primary"
-                    style={styles.mockAddBtn}
-                    textStyle={styles.mockAddBtnText}
-                  />
-                )}
-              </View>
-
-              {filteredDiagnostics.length === 0 ? (
-                <View style={styles.emptyContainer}>
-                  <Ionicons name="clipboard-outline" size={48} color={theme.colors.textSecondary} />
-                  <Text style={styles.emptyText}>
-                    {searchQuery ? 'Nenhum diagnóstico corresponde à busca.' : 'Nenhum diagnóstico registrado localmente.'}
-                  </Text>
-                </View>
-              ) : (
-                filteredDiagnostics.map((item) => (
-                  <Card key={item.local_id} style={styles.diagnosticCard}>
-                    <View style={styles.cardContent}>
-                      {/* Thumbnail container */}
-                      <View style={styles.thumbnailContainer}>
-                        {item.image_uri &&
-                          (item.image_uri.startsWith('http') ||
-                            item.image_uri.startsWith('file://') ||
-                            item.image_uri.startsWith('data:')) ? (
-                          <Image source={{ uri: item.image_uri }} style={styles.thumbnailImage} />
-                        ) : (
-                          <Ionicons name="leaf-outline" size={28} color={theme.colors.primary} />
-                        )}
-                      </View>
-
-                      {/* Middle Details Block */}
-                      <View style={styles.cardMiddleBlock}>
-                        <Text style={styles.diagnosticTitle}>{getDiseaseName(item.doenca_id)}</Text>
-                        <Text style={styles.diagnosticScientific}>{getDiseaseScientific(item.doenca_id)}</Text>
-                        <Text style={styles.diagnosticMeta}>
-                          {Math.round(item.confianca_ia * 100)}% de precisão • {item.modelo_usado}
-                        </Text>
-                        <Text style={styles.diagnosticDate}>{formatDate(item.timestamp)}</Text>
-                      </View>
-
-                      {/* Right Sync Status Block */}
-                      <View style={styles.cardRightBlock}>
-                        {item.sync_status === 'SYNCED' ? (
-                          <View style={styles.statusWrapper}>
-                            <Ionicons name="cloud-done-outline" size={24} color={theme.colors.success} />
-                            <Text style={[styles.statusLabel, { color: theme.colors.success }]}>Enviado</Text>
-                          </View>
-                        ) : (
-                          <View style={styles.statusWrapper}>
-                            <Ionicons name="cloud-upload-outline" size={24} color={theme.colors.warning} />
-                            <Text style={[styles.statusLabel, { color: theme.colors.warning }]}>Pendente</Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                  </Card>
-                ))
-              )}
-            </View>
-          ) : (
-            // ABA 2: ENCICLOPÉDIA DE DOENÇAS
-            <View>
-              {filteredDiseases.length === 0 ? (
-                <View style={styles.emptyContainer}>
-                  <Ionicons name="book-outline" size={48} color={theme.colors.textSecondary} />
-                  <Text style={styles.emptyText}>Nenhuma patologia encontrada.</Text>
-                </View>
-              ) : (
-                filteredDiseases.map((item) => (
-                  <Card key={item.id} style={styles.diseaseCard}>
-                    <View style={styles.diseaseHeaderRow}>
-                      <View style={styles.diseaseHeaderMain}>
-                        <Text style={styles.diseaseTitle}>{item.nome_comum}</Text>
-                        <Text style={styles.diseaseScientific}>{item.nome_cientifico}</Text>
-                      </View>
-                      <Badge 
-                        text={getSeverityLabel(item.nivel_severidade)} 
-                        type={getSeverityColorType(item.nivel_severidade)} 
-                      />
-                    </View>
-                    
-                    <View style={styles.diseaseDivider} />
-                    
-                    <Text style={styles.symptomsHeader}>Sintomas característicos:</Text>
-                    <Text style={styles.symptomsText}>{item.sintomas}</Text>
-                  </Card>
-                ))
-              )}
-            </View>
-          )}
-        </ScrollView>
-      )}
-
-      {/* Fixed Bottom Tab Navigation Bar */}
-      <View style={styles.bottomTabBar}>
-        <TouchableOpacity 
-          style={styles.bottomTabItem} 
-          onPress={() => router.push('/camera')}
-          activeOpacity={0.7}
-          accessibilityRole="tab"
-          accessibilityLabel="Abrir câmera"
-        >
-          <Ionicons name="camera-outline" size={24} color={theme.colors.textSecondary} />
-          <Text style={styles.bottomTabLabel}>Câmera</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={styles.bottomTabItem}
+          style={styles.blocoTitulo}
           onPress={() => router.push('/chat')}
-          activeOpacity={0.7}
-          accessibilityRole="tab"
-          accessibilityLabel="Abrir chat com agrônomo"
+          accessibilityRole="button"
+          accessibilityLabel="Ver todas as conversas"
         >
-          <Ionicons name="chatbubbles-outline" size={24} color={theme.colors.textSecondary} />
-          <Text style={styles.bottomTabLabel}>Chat</Text>
+          <Text style={styles.blocoTituloTexto}>CONVERSAS</Text>
+          <Text style={styles.blocoSeta}>›</Text>
         </TouchableOpacity>
-        
-        {/* L12: Esta aba representa a seção consolidada de Histórico & Catálogo (Tela 1 da spec). */}
+
+        <View style={styles.bloco}>
+          {carregando ? (
+            <ActivityIndicator color={theme.colors.primary} style={styles.blocoCarregando} />
+          ) : conversas.length === 0 ? (
+            <Text style={styles.blocoVazio}>
+              Nenhuma conversa ainda. Tire uma foto de uma folha ou comece uma conversa com o
+              Agrônomo Virtual.
+            </Text>
+          ) : (
+            conversas.map((item) => (
+              <ItemConversa
+                key={item.id}
+                item={item}
+                onPress={() => router.push(`/chat/${item.id}`)}
+              />
+            ))
+          )}
+        </View>
+
+        {/* Bloco: mapa */}
         <TouchableOpacity
-          style={styles.bottomTabItemActive}
-          activeOpacity={1}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: true }}
-          accessibilityLabel="Catálogo, aba atual"
+          style={styles.blocoTitulo}
+          onPress={() => router.push('/mapa')}
+          accessibilityRole="button"
+          accessibilityLabel="Abrir o mapa de análises"
         >
-          <Ionicons name="book" size={24} color={theme.colors.primary} />
-          <Text style={styles.bottomTabLabelActive}>Catálogo</Text>
+          <Text style={styles.blocoTituloTexto}>MAPA DE ANÁLISES</Text>
+          <Text style={styles.blocoSeta}>›</Text>
         </TouchableOpacity>
-      </View>
+
+        <TouchableOpacity
+          style={[styles.bloco, styles.blocoMapa]}
+          onPress={() => router.push('/mapa')}
+          accessibilityRole="button"
+          accessibilityLabel={
+            mapa.total === 0
+              ? 'Nenhuma análise localizada ainda'
+              : `${mapa.total} análises mapeadas, ${mapa.problemas} com problema`
+          }
+        >
+          {mapa.total === 0 ? (
+            <Text style={styles.blocoVazio}>
+              Nenhuma análise com localização ainda. As fotos que você tirar em campo aparecem aqui.
+            </Text>
+          ) : (
+            <>
+              <View style={styles.mapaTotalLinha}>
+                <Ionicons name="location" size={22} color={theme.colors.primary} />
+                <Text style={styles.mapaTotal}>
+                  {mapa.total} {mapa.total === 1 ? 'análise mapeada' : 'análises mapeadas'}
+                </Text>
+              </View>
+              <View style={styles.mapaContagens}>
+                {/* "Problema" e não "doença": Fitotoxicidade é dano químico. */}
+                <View style={styles.mapaContagem}>
+                  <View style={[styles.ponto, { backgroundColor: theme.colors.warning }]} />
+                  <Text style={styles.mapaContagemTexto}>{mapa.problemas} com problema</Text>
+                </View>
+                <View style={styles.mapaContagem}>
+                  <View style={[styles.ponto, { backgroundColor: theme.colors.primary }]} />
+                  <Text style={styles.mapaContagemTexto}>{mapa.saudaveis} saudáveis</Text>
+                </View>
+              </View>
+            </>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.analisar}
+          onPress={() => router.push('/camera')}
+          accessibilityRole="button"
+          accessibilityLabel="Analisar uma folha com a câmera"
+        >
+          <Ionicons name="camera" size={22} color={theme.colors.surface} />
+          <Text style={styles.analisarTexto}>Analisar</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
+  container: { flex: 1, backgroundColor: theme.colors.background },
   header: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: theme.spacing.md,
-    paddingTop: Platform.OS === 'ios' ? 10 : 15,
-    paddingBottom: theme.spacing.md,
-    backgroundColor: theme.colors.surface,
+    paddingVertical: theme.spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  logoIcon: {
-    marginRight: 6,
-  },
+  headerEsquerda: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+  headerDireita: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
   logo: {
+    color: theme.colors.text,
     fontSize: theme.typography.fontSize.xl,
-    fontWeight: '900',
-    color: theme.colors.primary,
-    letterSpacing: 0.5,
+    fontWeight: 'bold',
   },
-  headerRight: {
+  conteudo: { padding: theme.spacing.md, gap: theme.spacing.sm },
+  blocoTitulo: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.xs,
+    paddingTop: theme.spacing.sm,
   },
-  logoutBtn: {
-    marginLeft: theme.spacing.md,
-    padding: 4,
+  blocoTituloTexto: {
+    color: theme.colors.textSecondary,
+    fontSize: theme.typography.fontSize.xs,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
-  searchContainer: {
-    padding: theme.spacing.md,
+  blocoSeta: { color: theme.colors.primary, fontSize: 22 },
+  bloco: {
     backgroundColor: theme.colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.surface,
-    borderRadius: 100,
-    height: 48,
-    paddingHorizontal: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    ...Platform.select({
-      ios: {
-        shadowColor: theme.colors.shadow,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 2,
-      },
-      web: {
-        boxShadow: '0px 2px 3px rgba(0, 0, 0, 0.08)',
-      }
-    }),
+    overflow: 'hidden',
   },
-  searchIcon: {
-    marginRight: theme.spacing.sm,
+  blocoCarregando: { paddingVertical: theme.spacing.lg },
+  blocoVazio: {
+    color: theme.colors.textSecondary,
+    fontSize: theme.typography.fontSize.sm,
+    lineHeight: 20,
+    padding: theme.spacing.md,
   },
-  searchInput: {
-    flex: 1,
-    height: '100%',
+  blocoMapa: { padding: theme.spacing.md, gap: theme.spacing.sm },
+  mapaTotalLinha: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+  mapaTotal: {
     color: theme.colors.text,
-    fontSize: theme.typography.fontSize.sm + 1,
-  },
-  clearSearchBtn: {
-    padding: 2,
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: theme.colors.surface,
-  },
-  tabButton: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: theme.spacing.md,
-    borderBottomWidth: 3,
-    borderBottomColor: 'transparent',
-  },
-  tabButtonActive: {
-    borderBottomColor: theme.colors.primary,
-  },
-  tabButtonText: {
-    fontSize: theme.typography.fontSize.md, // M7: fontSize.sm + 1 -> fontSize.md
-    color: theme.colors.textSecondary,
-    fontWeight: 'normal', // M6: '600' -> 'normal'
-  },
-  tabButtonTextActive: {
-    color: theme.colors.primary,
-    fontWeight: 'bold',
-  },
-  scrollContent: {
-    padding: theme.spacing.md,
-    paddingBottom: 40,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: theme.spacing.xl,
-  },
-  loadingText: {
-    marginTop: theme.spacing.md,
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textSecondary,
-    textAlign: 'center',
-  },
-  welcomeBanner: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: theme.colors.primaryLight10, // M8: #E8F5E9 -> theme.colors.primaryLight10
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.md,
-  },
-  welcomeTitle: {
-    fontSize: theme.typography.fontSize.md + 2,
-    fontWeight: 'bold',
-    color: theme.colors.primaryDark,
-  },
-  welcomeSubtitle: {
-    fontSize: theme.typography.fontSize.xs,
-    color: theme.colors.textSecondary,
-    marginTop: 2,
-  },
-  welcomeTextBlock: {
-    flex: 1,
-    marginRight: theme.spacing.sm,
-  },
-  syncBtn: {
-    height: 34,
-    paddingHorizontal: theme.spacing.md,
-    marginTop: theme.spacing.sm,
-    alignSelf: 'flex-start',
-  },
-  mockAddBtn: {
-    height: 38,
-    paddingHorizontal: theme.spacing.md,
-  },
-  mockAddBtnText: {
-    fontSize: theme.typography.fontSize.xs,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 50,
-  },
-  emptyText: {
-    marginTop: theme.spacing.md,
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textSecondary,
-    textAlign: 'center',
-  },
-  diagnosticCard: {
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.md,
-    borderRadius: 12,
-  },
-  cardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  thumbnailContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 8,
-    backgroundColor: theme.colors.primaryLight10, // M8: #E8F5E9 -> theme.colors.primaryLight10
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: theme.spacing.md,
-  },
-  thumbnailImage: {
-    width: 64,
-    height: 64,
-    borderRadius: 8,
-  },
-  cardMiddleBlock: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  diagnosticTitle: {
     fontSize: theme.typography.fontSize.md,
-    fontWeight: 'bold',
-    color: theme.colors.text,
-  },
-  diagnosticScientific: {
-    fontSize: theme.typography.fontSize.xs - 1,
-    color: theme.colors.textSecondary,
-    fontStyle: 'italic',
-    marginBottom: 2,
-  },
-  diagnosticMeta: {
-    fontSize: theme.typography.fontSize.xs,
-    color: theme.colors.primary,
     fontWeight: '600',
   },
-  diagnosticDate: {
-    fontSize: theme.typography.fontSize.xs - 1,
+  mapaContagens: { gap: theme.spacing.xs, paddingLeft: theme.spacing.xs },
+  mapaContagem: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+  ponto: { width: 10, height: 10, borderRadius: theme.borderRadius.round },
+  mapaContagemTexto: {
     color: theme.colors.textSecondary,
-    marginTop: 2,
+    fontSize: theme.typography.fontSize.sm,
   },
-  cardRightBlock: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingLeft: theme.spacing.sm,
-  },
-  statusWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusLabel: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    marginTop: 2,
-  },
-  diseaseCard: {
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.md,
-    borderRadius: 12,
-  },
-  diseaseHeaderRow: {
+  analisar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  diseaseHeaderMain: {
-    flex: 1, // M9: Mover inline style {{ flex: 1 }} para StyleSheet
-  },
-  diseaseTitle: {
-    fontSize: theme.typography.fontSize.md + 2,
-    fontWeight: 'bold',
-    color: theme.colors.text,
-  },
-  diseaseScientific: {
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textSecondary,
-    fontStyle: 'italic',
-    marginTop: 2,
-  },
-  diseaseDivider: {
-    height: 1,
-    backgroundColor: theme.colors.border, // M8: #E0E0E0 -> theme.colors.border
-    marginVertical: theme.spacing.md,
-  },
-  symptomsHeader: {
-    fontSize: theme.typography.fontSize.sm,
-    fontWeight: 'bold',
-    color: theme.colors.text,
-    marginBottom: 4,
-  },
-  symptomsText: {
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textSecondary,
-    lineHeight: 20,
-  },
-  bottomTabBar: {
-    flexDirection: 'row',
-    height: 64,
-    backgroundColor: theme.colors.surface, // M8: #FFFFFF -> theme.colors.surface
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border, // M8: #E0E0E0 -> theme.colors.border
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingBottom: Platform.OS === 'ios' ? 12 : 4,
-  },
-  bottomTabItem: {
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
-    height: '100%',
+    gap: theme.spacing.sm,
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.round,
+    paddingVertical: theme.spacing.md,
+    marginTop: theme.spacing.md,
   },
-  bottomTabItemActive: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    height: '100%',
-  },
-  bottomTabLabel: {
-    fontSize: 11,
-    color: theme.colors.textSecondary,
-    marginTop: 3,
-  },
-  bottomTabLabelActive: {
-    fontSize: 11,
-    color: theme.colors.primary,
-    fontWeight: 'bold',
-    marginTop: 3,
+  analisarTexto: {
+    color: theme.colors.surface,
+    fontSize: theme.typography.fontSize.md,
+    fontWeight: '600',
   },
 });
