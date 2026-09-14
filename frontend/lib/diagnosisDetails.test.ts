@@ -204,14 +204,17 @@ describe('diagnosisDetails', () => {
     expect(mocks.hasFeedback).not.toHaveBeenCalled();
   });
 
-  it('listCatalogDiseases devolve a lista ordenada para a correção do produtor', async () => {
+  it('listCatalogDiseases devolve a lista ordenada, com a doença inteira', async () => {
     mocks.execute.mockResolvedValueOnce(
-      rows([{ id: 'a', nome_comum: 'Antracnose' }, { id: 'b', nome_comum: 'Ferrugem Asiática' }])
+      rows([
+        { id: 'a', nome_comum: 'Antracnose', nome_cientifico: 'Colletotrichum truncatum', sintomas: 'Lesões escuras', nivel_severidade: 4 },
+        { id: 'b', nome_comum: 'Ferrugem Asiática', nome_cientifico: null, sintomas: null, nivel_severidade: null },
+      ])
     );
 
     expect(await listCatalogDiseases()).toEqual([
-      { id: 'a', nomeComum: 'Antracnose' },
-      { id: 'b', nomeComum: 'Ferrugem Asiática' },
+      { id: 'a', nomeComum: 'Antracnose', nomeCientifico: 'Colletotrichum truncatum', sintomas: 'Lesões escuras', nivelSeveridade: 4 },
+      { id: 'b', nomeComum: 'Ferrugem Asiática', nomeCientifico: null, sintomas: null, nivelSeveridade: null },
     ]);
     const [sql] = mocks.execute.mock.calls[0] as [string];
     expect(sql).toContain('ORDER BY nome_comum');
