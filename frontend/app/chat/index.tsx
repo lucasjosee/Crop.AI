@@ -24,8 +24,8 @@ import {
   TITULO_MAX,
   type SessionListItem,
 } from '../../lib/chatRepository';
-import { dataRelativa, previewDaSessao } from '../../lib/sessionListFormat';
 import { theme } from '../../config/theme';
+import { ItemConversa } from '../../components/ItemConversa';
 
 export default function HistoricoScreen() {
   const router = useRouter();
@@ -103,27 +103,11 @@ export default function HistoricoScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: SessionListItem }) => (
-      <TouchableOpacity
-        style={styles.item}
+      <ItemConversa
+        item={item}
         onPress={() => router.push(`/chat/${item.id}`)}
         onLongPress={() => abrirMenu(item)}
-        accessibilityRole="button"
-        accessibilityLabel={`Conversa ${item.title}`}
-        accessibilityHint="Toque para abrir, toque longo para renomear ou apagar"
-      >
-        <View style={styles.itemTexto}>
-          <View style={styles.itemTopo}>
-            {item.originDiagnosticLocalId ? <Text style={styles.marcaFoto}>📷</Text> : null}
-            <Text style={styles.itemTitulo} numberOfLines={1}>
-              {item.title}
-            </Text>
-          </View>
-          <Text style={styles.itemPrevia} numberOfLines={1}>
-            {previewDaSessao(item)}
-          </Text>
-        </View>
-        <Text style={styles.itemData}>{dataRelativa(item.updatedAt)}</Text>
-      </TouchableOpacity>
+      />
     ),
     [router, abrirMenu]
   );
@@ -230,28 +214,6 @@ const styles = StyleSheet.create({
   },
   lista: { paddingVertical: theme.spacing.sm },
   separador: { height: 1, backgroundColor: theme.colors.border, marginLeft: theme.spacing.md },
-  item: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.md,
-  },
-  itemTexto: { flex: 1 },
-  itemTopo: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
-  marcaFoto: { fontSize: theme.typography.fontSize.sm },
-  itemTitulo: {
-    flex: 1,
-    color: theme.colors.text,
-    fontSize: theme.typography.fontSize.md,
-    fontWeight: '600',
-  },
-  itemPrevia: {
-    color: theme.colors.textSecondary,
-    fontSize: theme.typography.fontSize.sm,
-    marginTop: 2,
-  },
-  itemData: { color: theme.colors.textSecondary, fontSize: theme.typography.fontSize.xs },
   botaoNova: {
     margin: theme.spacing.md,
     backgroundColor: theme.colors.primary,
