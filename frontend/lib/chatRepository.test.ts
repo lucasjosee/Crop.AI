@@ -248,4 +248,35 @@ describe('chatRepository', () => {
     expect(sql).toContain('INSERT INTO chat_sessions');
     expect(params).toEqual(expect.arrayContaining(['Mancha na folha']));
   });
+
+  it('listMapSessions traz o anexo da primeira foto, com desempate por id', async () => {
+    mocks.execute.mockResolvedValueOnce(
+      rows([
+        {
+          id: 's1',
+          title: 'Ferrugem',
+          created_at: '2026-09-14T10:00:00.000Z',
+          latitude: -23.5,
+          longitude: -46.6,
+          doenca_id: null,
+          confianca_ia: 0.91,
+          cross_validation_status: 'CONFIRMED',
+          image_uri: 'file:///f.jpg',
+          attachment_json: '{"cvResult":{"diseaseId":"Saudável"}}',
+        },
+      ])
+    );
+
+    const lista = await listMapSessions();
+
+    expect(lista[0].attachmentJson).toBe('{"cvResult":{"diseaseId":"Saudável"}}');
+
+    const [sql] = mocks.execute.mock.calls[0] as [string];
+    expect(sql).toContain('attachment_json');
+    // A foto é a PRIMEIRA mensagem da conversa.
+    expect(sql).toContain('ORDER BY m.created_at ASC, m.id ASC');
+    // Continua excluindo conversa apagada e ponto sem coordenada.
+    expect(sql).toContain('s.deleted_at IS NULL');
+    expect(sql).toContain('d.latitude IS NOT NULL');
+  });
 });
