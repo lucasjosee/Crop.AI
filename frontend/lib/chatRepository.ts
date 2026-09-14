@@ -224,9 +224,9 @@ export async function listSessions(): Promise<SessionListItem[]> {
     `SELECT s.id, s.title, s.updated_at, s.origin_diagnostic_local_id,
             (SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.id) AS message_count,
             (SELECT m.content FROM chat_messages m WHERE m.session_id = s.id
-              ORDER BY m.created_at DESC LIMIT 1) AS last_message_content,
+              ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_message_content,
             (SELECT m.role FROM chat_messages m WHERE m.session_id = s.id
-              ORDER BY m.created_at DESC LIMIT 1) AS last_message_role
+              ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_message_role
        FROM chat_sessions s
       WHERE s.deleted_at IS NULL
       ORDER BY s.updated_at DESC;`

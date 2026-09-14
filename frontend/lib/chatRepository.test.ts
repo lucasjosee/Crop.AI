@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   execute: vi.fn(),
@@ -39,6 +39,8 @@ describe('chatRepository', () => {
     vi.clearAllMocks();
     mocks.execute.mockResolvedValue(rows([]));
   });
+
+  afterEach(() => vi.useRealTimers());
 
   it('createSession insere PENDING e devolve a sessão com id gerado', async () => {
     const session = await createSession({ title: 'Ferrugem', originDiagnosticLocalId: 'd1' });
@@ -193,6 +195,12 @@ describe('chatRepository', () => {
   });
 
   it('renameSession faz trim, bump em updated_at e marca PENDING', async () => {
+    // Relógio congelado: prova que updated_at é o instante atual, não um
+    // valor velho ou fixo — é essa guarda monotônica que o servidor exige
+    // para aceitar o rename (spec do sub-projeto 4).
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-13T12:00:00.000Z'));
+
     const titulo = await renameSession('s1', '  Talhão 7  ');
 
     expect(titulo).toBe('Talhão 7');
@@ -201,6 +209,7 @@ describe('chatRepository', () => {
     expect(sql).toContain('updated_at = ?');
     expect(sql).toContain("sync_status = 'PENDING'");
     expect(params[0]).toBe('Talhão 7');
+    expect(params[1]).toBe('2026-09-13T12:00:00.000Z');
     expect(params[2]).toBe('s1');
   });
 

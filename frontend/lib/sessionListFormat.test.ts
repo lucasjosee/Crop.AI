@@ -40,31 +40,38 @@ describe('previewDaSessao', () => {
       previewDaSessao(item({ lastMessageContent: 'E a dosagem?', lastMessageRole: 'user' }))
     ).toBe('Você: E a dosagem?');
   });
+
+  it('conteúdo nulo é tratado como a foto, não como erro', () => {
+    expect(previewDaSessao(item({ lastMessageContent: null, lastMessageRole: 'user' }))).toBe(
+      PREVIA_FOTO
+    );
+  });
 });
 
 describe('dataRelativa', () => {
-  const agora = new Date('2026-09-13T15:00:00.000Z');
+  // Construído por componentes locais, não por string UTC: `dataRelativa`
+  // compara dia e hora em hora local, e misturar as duas convenções fazia o
+  // teste falhar em fusos a oeste de Greenwich.
+  const agora = new Date(2026, 8, 13, 15, 0, 0); // 13 set 2026, 15:00 local
 
   it('menos de um minuto é "Agora"', () => {
-    expect(dataRelativa('2026-09-13T14:59:30.000Z', agora)).toBe('Agora');
+    const trintaSegundosAntes = new Date(agora.getTime() - 30_000);
+    expect(dataRelativa(trintaSegundosAntes.toISOString(), agora)).toBe('Agora');
   });
 
   it('mesmo dia mostra a hora', () => {
-    const cedo = new Date('2026-09-13T15:00:00.000Z');
-    cedo.setHours(8, 5, 0, 0);
+    const cedo = new Date(2026, 8, 13, 8, 5, 0);
     expect(dataRelativa(cedo.toISOString(), agora)).toBe('08:05');
   });
 
   it('dia anterior é "Ontem"', () => {
-    const ontem = new Date(agora);
-    ontem.setDate(agora.getDate() - 1);
+    const ontem = new Date(2026, 8, 12, 10, 0, 0);
     expect(dataRelativa(ontem.toISOString(), agora)).toBe('Ontem');
   });
 
   it('mais antigo mostra dia e mês', () => {
-    const antigo = new Date(agora);
-    antigo.setDate(agora.getDate() - 5);
-    expect(dataRelativa(antigo.toISOString(), agora)).toMatch(/^\d{1,2} \w{3}$/);
+    const antigo = new Date(2026, 8, 8, 10, 0, 0);
+    expect(dataRelativa(antigo.toISOString(), agora)).toBe('8 set');
   });
 
   it('data inválida não quebra a lista', () => {
