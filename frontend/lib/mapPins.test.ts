@@ -6,7 +6,15 @@ vi.mock('./diagnosisDetails', () => ({
   ),
 }));
 
-import { montarPinos, regiaoInicial, REGIAO_PADRAO, type PinoMapa } from './mapPins';
+import {
+  classificarPino,
+  estadoDoMapa,
+  montarPinos,
+  regiaoInicial,
+  resumoDoMapa,
+  REGIAO_PADRAO,
+  type PinoMapa,
+} from './mapPins';
 import type { MapSession } from './chatRepository';
 
 function linha(over: Partial<MapSession> = {}): MapSession {
@@ -109,5 +117,70 @@ describe('regiaoInicial', () => {
     const r = regiaoInicial([pino(-23.5, -46.6), pino(-23.5, -46.6)]);
     expect(r.latitudeDelta).toBe(0.01);
     expect(r.longitudeDelta).toBe(0.01);
+  });
+});
+
+describe('classificarPino', () => {
+  it('Saudável é o único SAUDAVEL', () => {
+    expect(classificarPino('{"cvResult":{"diseaseId":"Saudável"}}')).toBe('SAUDAVEL');
+  });
+
+  it('Fitotoxicidade é PROBLEMA, porque é dano químico e não planta sadia', () => {
+    expect(classificarPino('{"cvResult":{"diseaseId":"Fitotoxicidade"}}')).toBe('PROBLEMA');
+  });
+
+  it('doença do catálogo é PROBLEMA', () => {
+    expect(classificarPino('{"cvResult":{"diseaseId":"3f34559c-6a12-4eb2-a42e-cf629ec2e9e6"}}')).toBe(
+      'PROBLEMA'
+    );
+  });
+
+  it('JSON inválido cai em PROBLEMA: na dúvida, sinalizar', () => {
+    expect(classificarPino('{isto não é json')).toBe('PROBLEMA');
+  });
+
+  it('anexo ausente cai em PROBLEMA', () => {
+    expect(classificarPino(null)).toBe('PROBLEMA');
+  });
+});
+
+describe('resumoDoMapa', () => {
+  it('conta total, problemas e saudáveis', () => {
+    const linhas = [
+      linha({ sessionId: 'a', attachmentJson: '{"cvResult":{"diseaseId":"Saudável"}}' }),
+      linha({ sessionId: 'b', attachmentJson: '{"cvResult":{"diseaseId":"Fitotoxicidade"}}' }),
+      linha({ sessionId: 'c', attachmentJson: '{"cvResult":{"diseaseId":"Ferrugem"}}' }),
+      linha({ sessionId: 'd', attachmentJson: null }),
+    ];
+
+    expect(resumoDoMapa(linhas)).toEqual({ total: 4, problemas: 3, saudaveis: 1 });
+  });
+
+  it('lista vazia devolve zeros', () => {
+    expect(resumoDoMapa([])).toEqual({ total: 0, problemas: 0, saudaveis: 0 });
+  });
+
+  it('problemas e saudáveis sempre somam o total', () => {
+    const linhas = [linha({ sessionId: 'a' }), linha({ sessionId: 'b', attachmentJson: null })];
+    const r = resumoDoMapa(linhas);
+    expect(r.problemas + r.saudaveis).toBe(r.total);
+  });
+});
+
+describe('estadoDoMapa', () => {
+  it('PROBING carrega: o app ainda não sabe se há rede', () => {
+    expect(estadoDoMapa('PROBING')).toBe('CARREGANDO');
+  });
+
+  it('FIELD avisa que o mapa precisa de conexão', () => {
+    expect(estadoDoMapa('FIELD')).toBe('SEM_REDE');
+  });
+
+  it('ONLINE desenha o mapa', () => {
+    expect(estadoDoMapa('ONLINE')).toBe('MAPA');
+  });
+
+  it('DEGRADED desenha o mapa: lento ainda é conectado', () => {
+    expect(estadoDoMapa('DEGRADED')).toBe('MAPA');
   });
 });
