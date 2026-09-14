@@ -44,6 +44,13 @@ export interface MapSession {
   confiancaIa: number | null;
   crossValidationStatus: string | null;
   imageUri: string | null;
+  /**
+   * `attachment_json` da primeira mensagem com foto. Traz o `cvResult.diseaseId`,
+   * que é o único jeito de distinguir Saudável de Fitotoxicidade: as duas
+   * gravam `doenca_id` nulo, e o título da sessão deixou de ser confiável
+   * desde que o produtor pode renomear a conversa.
+   */
+  attachmentJson: string | null;
 }
 
 type SessionRow = Record<string, any>;
@@ -285,7 +292,10 @@ export async function listMapSessions(): Promise<MapSession[]> {
   const res = await dbDriver.execute(
     `SELECT s.id, s.title, s.created_at,
             d.latitude, d.longitude, d.doenca_id, d.confianca_ia,
-            d.cross_validation_status, d.image_uri
+            d.cross_validation_status, d.image_uri,
+            (SELECT m.attachment_json FROM chat_messages m
+              WHERE m.session_id = s.id AND m.attachment_json IS NOT NULL
+              ORDER BY m.created_at ASC, m.id ASC LIMIT 1) AS attachment_json
        FROM chat_sessions s
        JOIN fila_diagnosticos d ON d.local_id = s.origin_diagnostic_local_id
       WHERE s.deleted_at IS NULL AND d.latitude IS NOT NULL;`
@@ -300,5 +310,6 @@ export async function listMapSessions(): Promise<MapSession[]> {
     confiancaIa: row.confianca_ia ?? null,
     crossValidationStatus: row.cross_validation_status ?? null,
     imageUri: row.image_uri ?? null,
+    attachmentJson: row.attachment_json ?? null,
   }));
 }
