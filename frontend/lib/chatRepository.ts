@@ -223,12 +223,12 @@ export interface SessionListItem {
 /**
  * As conversas da lista, da mais recente para a mais antiga.
  *
- * Sem paginação: a linha é leve e a FlatList virtualiza. Se um dia doer, o
- * LIMIT entra aqui sem mudar a interface.
+ * `limite` existe para o bloco de resumo da Home, que mostra só as três mais
+ * recentes. Sem ele a consulta é a mesma de sempre — `/chat` continua trazendo
+ * tudo, porque a FlatList virtualiza e a linha é leve.
  */
-export async function listSessions(): Promise<SessionListItem[]> {
-  const res = await dbDriver.execute(
-    `SELECT s.id, s.title, s.updated_at, s.origin_diagnostic_local_id,
+export async function listSessions(limite?: number): Promise<SessionListItem[]> {
+  const base = `SELECT s.id, s.title, s.updated_at, s.origin_diagnostic_local_id,
             (SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.id) AS message_count,
             (SELECT m.content FROM chat_messages m WHERE m.session_id = s.id
               ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_message_content,
@@ -236,8 +236,13 @@ export async function listSessions(): Promise<SessionListItem[]> {
               ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_message_role
        FROM chat_sessions s
       WHERE s.deleted_at IS NULL
-      ORDER BY s.updated_at DESC;`
-  );
+      ORDER BY s.updated_at DESC`;
+
+  const res =
+    limite === undefined
+      ? await dbDriver.execute(`${base};`)
+      : await dbDriver.execute(`${base} LIMIT ?;`, [limite]);
+
   return (res.rows._array as Array<Record<string, any>>).map((row) => ({
     id: row.id,
     title: row.title,
