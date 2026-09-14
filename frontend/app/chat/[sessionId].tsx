@@ -74,9 +74,9 @@ export default function ChatSessionScreen() {
   // chamada em voo quanto quando nunca foi tentada, e só esta tela distingue.
   const [isValidating, setIsValidating] = useState(false);
 
-  const { isStreaming, streamingContent, pendingResponseFor, modelLoadProgress } = useChatStore();
+  const { isStreaming, streamingContent, pendingResponses, modelLoadProgress } = useChatStore();
   const { connectionMode } = useNetworkStore();
-  const isBusy = isStreaming || pendingResponseFor === sessionId;
+  const isBusy = isStreaming || !!pendingResponses[sessionId];
   const modeLabel = connectionMode === 'FIELD' ? '🌾 Campo' : '☁️ Online';
 
   const reload = useCallback(async (): Promise<ChatMessage[]> => {
@@ -109,9 +109,9 @@ export default function ChatSessionScreen() {
     async (userMessage: ChatMessage) => {
       if (!sessionId) return;
       const store = useChatStore.getState();
-      if (store.pendingResponseFor === sessionId) return;
+      if (store.pendingResponses[sessionId]) return;
 
-      store.setPendingResponseFor(sessionId);
+      store.marcarRespostaEmVoo(sessionId);
       store.resetStreaming();
       setChatError(null);
       setPartial(null);
@@ -166,14 +166,14 @@ export default function ChatSessionScreen() {
               }
             }
             useChatStore.getState().resetStreaming();
-            useChatStore.getState().setPendingResponseFor(null);
+            useChatStore.getState().limparRespostaEmVoo(sessionId);
             abortRef.current = null;
             await reload();
           },
           onError: (error) => {
             const text = useChatStore.getState().streamingContent;
             useChatStore.getState().resetStreaming();
-            useChatStore.getState().setPendingResponseFor(null);
+            useChatStore.getState().limparRespostaEmVoo(sessionId);
             abortRef.current = null;
             if (error === 'ABORTED') return;
             if (text.trim()) setPartial(text);
@@ -237,6 +237,9 @@ export default function ChatSessionScreen() {
     })();
     return () => {
       abortRef.current?.abort();
+      // Abortar não desmarca: sem esta linha, sair da conversa no meio da
+      // resposta deixa a sessão presa em "respondendo" para sempre.
+      useChatStore.getState().limparRespostaEmVoo(sessionId);
       useChatStore.getState().setActiveSession(null);
     };
   }, [sessionId, reload, requestResponse, validarSegundaOpiniao]);

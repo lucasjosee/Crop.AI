@@ -222,7 +222,7 @@ describe('useChatStore', () => {
   beforeEach(() => {
     useChatStore.getState().resetStreaming();
     useChatStore.getState().setActiveSession(null);
-    useChatStore.getState().setPendingResponseFor(null);
+    useChatStore.setState({ pendingResponses: {} });
     useChatStore.getState().setModelLoadProgress(null);
   });
 
@@ -247,11 +247,24 @@ describe('useChatStore', () => {
     expect(useChatStore.getState()).not.toHaveProperty('logSlmInteraction');
   });
 
-  it('pendingResponseFor guarda a sessão com resposta em voo', () => {
-    useChatStore.getState().setPendingResponseFor('s1');
-    expect(useChatStore.getState().pendingResponseFor).toBe('s1');
-    useChatStore.getState().setPendingResponseFor(null);
-    expect(useChatStore.getState().pendingResponseFor).toBeNull();
+  it('pendingResponses é por sessão: limpar uma não limpa a outra', () => {
+    const store = useChatStore.getState();
+
+    store.marcarRespostaEmVoo('s1');
+    store.marcarRespostaEmVoo('s2');
+    expect(useChatStore.getState().pendingResponses).toEqual({ s1: true, s2: true });
+
+    useChatStore.getState().limparRespostaEmVoo('s1');
+    expect(useChatStore.getState().pendingResponses).toEqual({ s2: true });
+  });
+
+  it('limpar sessão que não está em voo não altera o estado', () => {
+    useChatStore.setState({ pendingResponses: { s2: true } });
+    const antes = useChatStore.getState().pendingResponses;
+
+    useChatStore.getState().limparRespostaEmVoo('inexistente');
+
+    expect(useChatStore.getState().pendingResponses).toBe(antes);
   });
 
   it('modelLoadProgress é o canal do carregamento do .gguf para a UI', () => {
