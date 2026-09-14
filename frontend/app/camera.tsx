@@ -346,36 +346,6 @@ export default function CameraScreen() {
         )}
       </View>
 
-      <View style={styles.abas}>
-        <View
-          style={styles.abaAtiva}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: true }}
-          accessibilityLabel="Câmera, aba atual"
-        >
-          <Ionicons name="camera" size={24} color={theme.colors.primary} />
-          <Text style={styles.abaRotuloAtivo}>Câmera</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.aba}
-          onPress={() => router.push('/chat')}
-          accessibilityRole="tab"
-          accessibilityLabel="Abrir uma conversa nova"
-        >
-          <Ionicons name="chatbubbles-outline" size={24} color={theme.colors.textSecondary} />
-          <Text style={styles.abaRotulo}>Conversa</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.aba}
-          onPress={() => router.replace('/')}
-          accessibilityRole="tab"
-          accessibilityLabel="Abrir o catálogo"
-        >
-          <Ionicons name="book-outline" size={24} color={theme.colors.textSecondary} />
-          <Text style={styles.abaRotulo}>Catálogo</Text>
-        </TouchableOpacity>
-      </View>
-
       {__DEV__ ? (
         <Modal
           visible={debugAberto}
@@ -482,11 +452,6 @@ const styles = StyleSheet.create({
   obturadorDesabilitado: { opacity: 0.4 },
   obturador: { width: 76, height: 76, borderRadius: 38, borderWidth: 4, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   obturadorInterno: { width: 60, height: 60, borderRadius: 30, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
-  abas: { flexDirection: 'row', backgroundColor: theme.colors.background, borderTopWidth: 1, borderTopColor: theme.colors.border },
-  aba: { flex: 1, alignItems: 'center', paddingVertical: theme.spacing.sm },
-  abaAtiva: { flex: 1, alignItems: 'center', paddingVertical: theme.spacing.sm },
-  abaRotulo: { color: theme.colors.textSecondary, fontSize: theme.typography.fontSize.xxs, marginTop: 2 },
-  abaRotuloAtivo: { color: theme.colors.primary, fontSize: theme.typography.fontSize.xxs, fontWeight: '600', marginTop: 2 },
 
   debugFundo: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
   debugPainel: {
