@@ -172,9 +172,10 @@ describe('migração v9 — conversas vazias', () => {
     await runMigrationsAndSeed(driver as never);
 
     const del = sql().find(
-      (s) => s.includes('DELETE FROM chat_sessions') && s.includes("sync_status = 'PENDING'")
+      (s) => s.includes('DELETE FROM chat_sessions')
     );
     expect(del).toBeDefined();
+    expect(del).toContain("IN ('PENDING', 'FAILED')");
     expect(del).toContain('NOT EXISTS');
     expect(del).toContain('origin_diagnostic_local_id IS NULL');
   });
@@ -198,5 +199,14 @@ describe('migração v9 — conversas vazias', () => {
     await runMigrationsAndSeed(driver as never);
 
     expect(sql().some((s) => s.includes('PRAGMA user_version = 9'))).toBe(true);
+  });
+
+  it('apaga também a conversa vazia que ficou em FAILED', async () => {
+    const { driver, sql } = recordingDriver(8);
+
+    await runMigrationsAndSeed(driver as never);
+
+    const del = sql().find((s) => s.includes('DELETE FROM chat_sessions'));
+    expect(del).toContain("IN ('PENDING', 'FAILED')");
   });
 });

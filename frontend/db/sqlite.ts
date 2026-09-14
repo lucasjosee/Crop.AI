@@ -524,9 +524,11 @@ export async function runMigrationsAndSeed(driver: IDatabaseDriver) {
     // `origin_diagnostic_local_id IS NULL` protege a conversa de foto: ela
     // sempre tem mensagem, mas se a criação parcial do sub-projeto 3 deixar
     // uma sem, ela não é lixo deste bug e não deve sumir.
+    // Apagamos as que nunca saíram do aparelho: PENDING (sem sincronizar) e
+    // FAILED (tentaram cinco vezes e nunca chegaram ao servidor).
     await driver.execute(`
       DELETE FROM chat_sessions
-       WHERE sync_status = 'PENDING'
+       WHERE sync_status IN ('PENDING', 'FAILED')
          AND deleted_at IS NULL
          AND origin_diagnostic_local_id IS NULL
          AND NOT EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = chat_sessions.id);
@@ -548,7 +550,6 @@ export async function runMigrationsAndSeed(driver: IDatabaseDriver) {
     await driver.execute('PRAGMA user_version = 9;');
     console.log('[Database] Migration to version 9 complete.');
   }
-
 }
 
 // -------------------------------------------------------------
