@@ -243,8 +243,11 @@ export default function ChatSessionScreen() {
         // Foto: o produtor já pediu a análise ao disparar a câmera — responder
         // sozinho é o que ele espera, e resolve o app morto no meio da resposta.
         void requestResponse(pendente);
-      } else if (pendente) {
-        // Texto: re-executar custa tokens e surpreende. Só oferece.
+      } else if (pendente && !useChatStore.getState().pendingResponses[sessionId]) {
+        // Texto: re-executar custa tokens e surpreende. Só oferece — e só quando
+        // não há resposta em voo. Sem essa guarda, o efeito que re-roda depois do
+        // router.replace acha a mensagem que sendMessage acabou de gravar e a
+        // declara sem resposta enquanto o motor ainda está respondendo.
         setLastFailed(pendente);
         setChatError('Esta pergunta ficou sem resposta.');
       }
