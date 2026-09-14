@@ -4,7 +4,6 @@ const mocks = vi.hoisted(() => {
   const tables: Record<string, any[]> = {
     fila_diagnosticos: [],
     fila_feedbacks: [],
-    fila_slm_logs: [],
   };
 
   const wrap = (arr: any[]) => ({
@@ -52,10 +51,16 @@ vi.mock('./api', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('./catalogSyncService', () => ({ syncCatalog: vi.fn(async () => ({ updated: false })) }));
 vi.mock('../store/useNetworkStore', () => ({ useNetworkStore: { getState: () => mocks.network } }));
 vi.mock('../store/useAuthStore', () => ({ useAuthStore: { getState: () => mocks.auth } }));
+vi.mock('./conversationSyncService', () => ({
+  syncPendingConversations: vi.fn(async () => ({ synced: 2, failed: 0 })),
+}));
+vi.mock('./pendingSecondOpinionService', () => ({
+  sweepPendingSecondOpinions: vi.fn(async () => ({ synced: 1, failed: 0 })),
+}));
 
 import { api } from './api';
 import {
-  runFullSync, syncPendingDiagnostics, syncPendingSlmLogs, MAX_RETRIES,
+  runFullSync, syncPendingDiagnostics, MAX_RETRIES,
 } from './syncService';
 
 function seedDiagnostic(overrides: Record<string, any> = {}) {
@@ -84,7 +89,6 @@ describe('syncService', () => {
     vi.clearAllMocks();
     mocks.tables.fila_diagnosticos.length = 0;
     mocks.tables.fila_feedbacks.length = 0;
-    mocks.tables.fila_slm_logs.length = 0;
     mocks.network.connectionMode = 'ONLINE';
     mocks.auth.isAuthenticated = true;
 
@@ -172,23 +176,14 @@ describe('syncService', () => {
     expect(manual.synced).toBe(1);
   });
 
-  it('sincroniza logs SLM parseando interactions_json (T5.5 app-side)', async () => {
-    mocks.tables.fila_slm_logs.push({
-      session_id: 'sess-1',
-      started_at: '2026-06-09T14:00:00Z',
-      model_version: 'gemma-2b-it-q4_k_m',
-      interactions_json: JSON.stringify([{ prompt: 'Oi', response: 'Olá', latency_ms: 900, rag_used_documents: [] }]),
-      sync_status: 'PENDING',
-      retry_count: 0,
-    });
-    vi.mocked(api.post).mockResolvedValue({ data: { status: 'success', processed_count: 1 } } as any);
+  it('runFullSync roda conversas e segundas opiniões, e não fala mais de slm-logs', async () => {
+    const resultado = await runFullSync();
 
-    const result = await syncPendingSlmLogs();
-
-    expect(result.synced).toBe(1);
-    const call = vi.mocked(api.post).mock.calls.find((c) => String(c[0]).includes('/sync/slm-logs'));
-    expect((call![1] as any).slm_sessions[0].interactions[0].prompt).toBe('Oi');
-    expect(mocks.tables.fila_slm_logs[0].sync_status).toBe('SYNCED');
+    expect(resultado.ran).toBe(true);
+    expect(resultado.conversations).toEqual({ synced: 2, failed: 0 });
+    expect(resultado.secondOpinions).toEqual({ synced: 1, failed: 0 });
+    expect(resultado).not.toHaveProperty('slmLogs');
+    expect(vi.mocked(api.post).mock.calls.every(([url]) => !String(url).includes('slm-logs'))).toBe(true);
   });
 
   it('runFullSync não roda em modo FIELD', async () => {

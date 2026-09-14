@@ -5,7 +5,7 @@ import { runFullSync } from '../lib/syncService';
 interface SyncState {
   pendingDiagnostics: number;
   pendingFeedbacks: number;
-  pendingSlmLogs: number;
+  pendingConversations: number;
   isSyncing: boolean;
   lastSyncAt: string | null;
   lastError: string | null;
@@ -25,22 +25,28 @@ function countUnsynced(res: any): number {
 export const useSyncStore = create<SyncState>((set, get) => ({
   pendingDiagnostics: 0,
   pendingFeedbacks: 0,
-  pendingSlmLogs: 0,
+  pendingConversations: 0,
   isSyncing: false,
   lastSyncAt: null,
   lastError: null,
 
   refreshCounts: async () => {
     try {
-      const [diags, feedbacks, slmLogs] = await Promise.all([
+      const [diags, feedbacks, conversas] = await Promise.all([
         dbDriver.execute('SELECT * FROM fila_diagnosticos;'),
         dbDriver.execute('SELECT * FROM fila_feedbacks;'),
-        dbDriver.execute('SELECT * FROM fila_slm_logs;'),
+        dbDriver.execute(
+          `SELECT s.id FROM chat_sessions s
+            WHERE s.sync_status IN ('PENDING', 'FAILED')
+               OR EXISTS (SELECT 1 FROM chat_messages m
+                           WHERE m.session_id = s.id AND m.sync_status = 'PENDING');`
+        ),
       ]);
       set({
         pendingDiagnostics: countUnsynced(diags),
         pendingFeedbacks: countUnsynced(feedbacks),
-        pendingSlmLogs: countUnsynced(slmLogs),
+        // A consulta já filtra; aqui é contagem de linhas, não de status.
+        pendingConversations: conversas.rows.length,
       });
     } catch {
       console.warn('[SyncStore] Falha ao contar pendências.');

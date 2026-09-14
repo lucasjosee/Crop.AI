@@ -5,14 +5,17 @@ const mocks = vi.hoisted(() => {
   const tables: Record<string, any[]> = {
     fila_diagnosticos: [],
     fila_feedbacks: [],
-    fila_slm_logs: [],
+    chat_sessions: [],
   };
   const wrap = (arr: any[]) => ({
     rows: { _array: arr, length: arr.length, item: (i: number) => arr[i] },
     rowsAffected: 0,
   });
   const execute = vi.fn(async (sql: string) => {
-    const m = sql.trim().toLowerCase().match(/^select \* from (\w+)/);
+    const s = sql.trim().toLowerCase();
+    // A contagem de conversas não é `select * from <tabela>`: ela filtra no SQL.
+    if (s.includes('from chat_sessions')) return wrap([...tables.chat_sessions]);
+    const m = s.match(/^select \* from (\w+)/);
     if (m) return wrap([...tables[m[1]]]);
     return wrap([]);
   });
@@ -25,7 +28,8 @@ vi.mock('../lib/syncService', () => ({
     ran: true,
     diagnostics: { synced: 1, failed: 0 },
     feedbacks: { synced: 0, failed: 0 },
-    slmLogs: { synced: 0, failed: 0 },
+    conversations: { synced: 0, failed: 0 },
+    secondOpinions: { synced: 0, failed: 0 },
     catalogUpdated: false,
   })),
 }));
@@ -38,9 +42,9 @@ describe('useSyncStore', () => {
     vi.clearAllMocks();
     mocks.tables.fila_diagnosticos.length = 0;
     mocks.tables.fila_feedbacks.length = 0;
-    mocks.tables.fila_slm_logs.length = 0;
+    mocks.tables.chat_sessions.length = 0;
     useSyncStore.setState({
-      pendingDiagnostics: 0, pendingFeedbacks: 0, pendingSlmLogs: 0,
+      pendingDiagnostics: 0, pendingFeedbacks: 0, pendingConversations: 0,
       isSyncing: false, lastSyncAt: null, lastError: null,
     });
   });
@@ -51,13 +55,13 @@ describe('useSyncStore', () => {
       { local_id: 'b', sync_status: 'FAILED' },
       { local_id: 'c', sync_status: 'SYNCED' },
     );
-    mocks.tables.fila_slm_logs.push({ session_id: 's', sync_status: 'PENDING' });
+    mocks.tables.chat_sessions.push({ id: 's1' });
 
     await useSyncStore.getState().refreshCounts();
 
     expect(useSyncStore.getState().pendingDiagnostics).toBe(2);
     expect(useSyncStore.getState().pendingFeedbacks).toBe(0);
-    expect(useSyncStore.getState().pendingSlmLogs).toBe(1);
+    expect(useSyncStore.getState().pendingConversations).toBe(1);
   });
 
   it('syncNow roda o sync, atualiza lastSyncAt e contagens', async () => {
@@ -77,7 +81,8 @@ describe('useSyncStore', () => {
           ran: true,
           diagnostics: { synced: 0, failed: 0 },
           feedbacks: { synced: 0, failed: 0 },
-          slmLogs: { synced: 0, failed: 0 },
+          conversations: { synced: 0, failed: 0 },
+          secondOpinions: { synced: 0, failed: 0 },
           catalogUpdated: false,
         });
       })
