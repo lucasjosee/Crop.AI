@@ -155,12 +155,48 @@ describe('migração v8 — fila de conversas assume o sync', () => {
     expect(sql().some((s) => s.includes('PRAGMA user_version = 8'))).toBe(true);
   });
 
-  it('não roda a v8 num banco que já está na 8', async () => {
+  it('não roda a v9 num banco que já está na 9', async () => {
+    const { driver, sql } = recordingDriver(9);
+
+    await runMigrationsAndSeed(driver as never);
+
+    // Prova que toda guarda foi pulada e nada além da sondagem foi executado.
+    expect(sql()).toEqual(['PRAGMA user_version;']);
+  });
+});
+
+describe('migração v9 — conversas vazias', () => {
+  it('apaga a conversa vazia que nunca saiu do aparelho', async () => {
     const { driver, sql } = recordingDriver(8);
 
     await runMigrationsAndSeed(driver as never);
 
-    // Prova que a guarda pulou a v8 e nada além da sondagem de versão foi executado.
-    expect(sql()).toEqual(['PRAGMA user_version;']);
+    const del = sql().find(
+      (s) => s.includes('DELETE FROM chat_sessions') && s.includes("sync_status = 'PENDING'")
+    );
+    expect(del).toBeDefined();
+    expect(del).toContain('NOT EXISTS');
+    expect(del).toContain('origin_diagnostic_local_id IS NULL');
+  });
+
+  it('marca apagada, em vez de apagar, a conversa vazia que já subiu', async () => {
+    const { driver, sql } = recordingDriver(8);
+
+    await runMigrationsAndSeed(driver as never);
+
+    const upd = sql().find(
+      (s) => s.includes('UPDATE chat_sessions') && s.includes("sync_status = 'SYNCED'")
+    );
+    expect(upd).toBeDefined();
+    expect(upd).toContain('deleted_at =');
+    expect(upd).toContain('NOT EXISTS');
+  });
+
+  it('grava a versão 9', async () => {
+    const { driver, sql } = recordingDriver(8);
+
+    await runMigrationsAndSeed(driver as never);
+
+    expect(sql().some((s) => s.includes('PRAGMA user_version = 9'))).toBe(true);
   });
 });

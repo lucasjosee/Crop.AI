@@ -513,6 +513,42 @@ export async function runMigrationsAndSeed(driver: IDatabaseDriver) {
     console.log('[Database] Migration to version 8 complete.');
   }
 
+  if (version < 9) {
+    console.log('[Database] Migrating to version 9: limpando conversas vazias...');
+
+    // `/chat` criava uma sessão a cada mount e redirecionava, então todo
+    // aparelho que rodou o app tem conversas vazias. A partir daqui a conversa
+    // livre só nasce na primeira mensagem, mas o que o bug já criou precisa
+    // sair — senão a lista nasce suja.
+    //
+    // `origin_diagnostic_local_id IS NULL` protege a conversa de foto: ela
+    // sempre tem mensagem, mas se a criação parcial do sub-projeto 3 deixar
+    // uma sem, ela não é lixo deste bug e não deve sumir.
+    await driver.execute(`
+      DELETE FROM chat_sessions
+       WHERE sync_status = 'PENDING'
+         AND deleted_at IS NULL
+         AND origin_diagnostic_local_id IS NULL
+         AND NOT EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = chat_sessions.id);
+    `);
+
+    // A que já subiu não pode simplesmente sumir daqui: sem o tombstone, o
+    // servidor ficaria com a conversa vazia para sempre.
+    await driver.execute(`
+      UPDATE chat_sessions
+         SET deleted_at = datetime('now'),
+             updated_at = datetime('now'),
+             sync_status = 'PENDING'
+       WHERE sync_status = 'SYNCED'
+         AND deleted_at IS NULL
+         AND origin_diagnostic_local_id IS NULL
+         AND NOT EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = chat_sessions.id);
+    `);
+
+    await driver.execute('PRAGMA user_version = 9;');
+    console.log('[Database] Migration to version 9 complete.');
+  }
+
 }
 
 // -------------------------------------------------------------
