@@ -79,4 +79,63 @@ describe('runImageInference (caminho nativo)', () => {
     expect(result.modelUsed).toBe('tflite_mock_mobile_forced_v1.0');
     expect(mocks.loadTensorflowModel).not.toHaveBeenCalled();
   });
+
+  it('rejeita e nunca resolve com Saudável quando o modelo devolve mais classes que LABELS_LIST', async () => {
+    const saida = new Float32Array(18).fill(0.01);
+    saida[17] = 0.9; // índice fora de LABELS_LIST (17 classes, índices 0-16)
+    mocks.run.mockResolvedValue([saida]);
+
+    let resultado: Awaited<ReturnType<typeof runImageInference>> | undefined;
+    let erroCapturado: unknown;
+    try {
+      resultado = await runImageInference('file:///folha.jpg');
+    } catch (erro) {
+      erroCapturado = erro;
+    }
+
+    expect(erroCapturado).toBeInstanceOf(Error);
+    expect(resultado).toBeUndefined();
+    expect(resultado?.diseaseId).not.toBe('Saudável');
+  });
+
+  it('rejeita quando o modelo devolve menos classes que LABELS_LIST', async () => {
+    const saida = new Float32Array(16).fill(0.01);
+    saida[15] = 0.9;
+    mocks.run.mockResolvedValue([saida]);
+
+    await expect(runImageInference('file:///folha.jpg')).rejects.toThrow();
+  });
+
+  it('devolve Saudável de verdade quando o argmax cai no índice correto de Saudável', async () => {
+    const saudavel = LABELS_LIST.indexOf('Saudável');
+    mocks.run.mockResolvedValue([probabilitiesWithPeakAt(saudavel)]);
+
+    const result = await runImageInference('file:///folha.jpg');
+
+    expect(result.diseaseId).toBe('Saudável');
+  });
+
+  it('traduz Fitotoxicidade de Cobre para a chave especial Fitotoxicidade', async () => {
+    const fito = LABELS_LIST.indexOf('Fitotoxicidade de Cobre');
+    mocks.run.mockResolvedValue([probabilitiesWithPeakAt(fito)]);
+
+    const result = await runImageInference('file:///folha.jpg');
+
+    expect(result.diseaseId).toBe('Fitotoxicidade');
+  });
+
+  it('mapeia Ferrugem para o UUID do catálogo', async () => {
+    const ferrugem = LABELS_LIST.indexOf('Ferrugem');
+    mocks.run.mockResolvedValue([probabilitiesWithPeakAt(ferrugem)]);
+
+    const result = await runImageInference('file:///folha.jpg');
+
+    expect(result.diseaseId).toBe('3f34559c-6a12-4eb2-a42e-cf629ec2e9e6');
+  });
+
+  it('LABELS_LIST e as chaves de LABELS_MAP têm o mesmo conteúdo (guarda contra deriva)', () => {
+    const chavesDoMapa = Object.keys(LABELS_MAP);
+
+    expect(chavesDoMapa.sort()).toEqual([...LABELS_LIST].sort());
+  });
 });
