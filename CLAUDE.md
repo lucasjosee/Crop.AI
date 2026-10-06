@@ -57,9 +57,11 @@ Cada uma existe por um motivo concreto, e quebrar qualquer uma é bug de produto
 **`any` sobre fronteira nativa — três ocorrências, duas na mesma biblioteca.**
 1. `loadModel` em vez de `loadTensorflowModel` (sub-projeto 2)
 2. `takePhoto()`, que a `vision-camera` v5 não tem (sub-projeto 3)
-3. `TfliteModel.run()` recebe `ArrayBuffer[]`, o código passava `Float32Array` (primeira execução, 27/09/2026)
+3. `TfliteModel.run()` recebe `ArrayBuffer[]`, o código passava `Float32Array` (primeira execução, 27/09/2026). **Corrigida em 06/10/2026**, junto com a tipagem da fronteira: o cache do modelo é `TensorflowModel | null`, não mais `any`
 
 A terceira é na mesma lib da primeira: consertar o `loadModel` fez o carregamento passar e **só empurrou a falha um passo adiante**, porque se corrigiu a função que aparecia no erro sem auditar o resto da API. **Antes de confiar em qualquer chamada nativa, ler a tipagem instalada** — os `.d.ts` sob `node_modules/<lib>/lib/typescript/` — **e, quando uma biblioteca mentir uma vez, auditar a superfície inteira dela na mesma passada.**
+
+**Teste verde não prova fronteira nativa.** Os 260 testes passavam enquanto a inferência estava quebrada, porque o fake de `loadTensorflowModel` devolvia `Float32Array` — que é o que o código *esperava*, não o que a biblioteca *entrega*. **Um mock de fronteira nativa só vale o quanto for fiel ao contrato real**; quando escrever um, leia a tipagem instalada e faça o fake obedecê-la.
 
 **Barras de navegação falsas.** Existiram na Home e na câmera: três `TouchableOpacity` fazendo `router.push`, com item ativo escrito à mão, mentindo sobre onde o usuário estava. Foram apagadas no sub-projeto 7. A Home v2 vai construir um `Tabs` de verdade — que é outra coisa.
 
@@ -73,7 +75,7 @@ docker compose up -d db minio minio-init
 cd backend && npm run db:migrate && npm run db:seed && npm run dev
 
 # testes
-cd frontend && npm test          # 260 testes / 26 arquivos
+cd frontend && npm test          # 269 testes / 27 arquivos
 cd backend  && npm test          # 82 / 13 — exige o Postgres do compose no ar
 npm run typecheck                # nos dois pacotes
 
@@ -92,7 +94,6 @@ No emulador a câmera é uma cena 3D falsa: use o **simulador de diagnóstico** 
 |---|---|
 | **Chave do Google Maps para Android não provisionada** | `/mapa` abre **em branco** no Android; o iOS cai no Apple Maps e funciona. Falha silenciosa: o build passa. Bloqueia a Home v2 |
 | **`.gguf` do SLM não é distribuído** (ADR 0001, em aberto) | Chat offline não responde. Cópia manual para `/data/user/0/br.com.cropai/files/models/` |
-| **Inferência local quebrada** | `TfliteModel.run()` com tipo errado nas duas pontas — ver Armadilhas. **O diagnóstico por visão não funciona até isso ser consertado** |
 | **Sem sync manual** | O sub-projeto 7 removeu o único botão. O automático continua, mas não há retry após falha |
 
 ## Onde a documentação mente
@@ -101,7 +102,7 @@ Vale saber antes de ser mandado ler algo vazio:
 
 - **`produto/visao.md`, `produto/requisitos.md` e `referencia/configuracao.md` ainda são esqueletos** — só títulos e comentários. Não mande ninguém lê-los esperando conteúdo.
 - **Os ADRs 0002 a 0005 foram escritos em 06/10/2026 por reconstrução**, a partir do código e da `api.md`, depois de passarem meses como templates vazios. O *o quê* de cada um é verificado; o *porquê* é inferência marcada no topo de cada arquivo e **ainda não confirmada pelo autor**. O **ADR 0001** (distribuição do SLM) é o único original, e segue *em aberto*.
-- Corrigidos em 06/10/2026, para referência: `modelo-de-dados.md` documentava o SQLite até a v7 (está na v9) e listava `fila_slm_logs` como fila viva (a v8 apagou); `ambiente-local.md` dizia 54 e 65 testes (são 260 e 82).
+- Corrigidos em 06/10/2026, para referência: `modelo-de-dados.md` documentava o SQLite até a v7 (está na v9) e listava `fila_slm_logs` como fila viva (a v8 apagou); `ambiente-local.md` dizia 54 e 65 testes (hoje 269 e 82).
 
 ## Estado, em 27/09/2026
 
