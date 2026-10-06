@@ -1,33 +1,50 @@
-import { Platform } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 
+const EXTENSAO_POR_MIME: Record<string, string> = {
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+};
+
+// data:<mime>;base64,<payload> — só a variante base64 é suportada.
+const DATA_URI_BASE64 = /^data:([^;,]*);base64,(.*)$/s;
+
 /**
- * Saves a temporary image URI to a persistent folder (documentDirectory) on native devices.
- * On web, it simply returns the original URI (which might be a base64 string or blob URL).
- * 
- * @param tempUri The temporary cache URI of the captured or selected image.
- * @returns Promise resolving to the persistent image URI or the original on web.
+ * Salva uma imagem temporária na pasta persistente (documentos) do aparelho.
+ *
+ * Aceita dois tipos de origem: um `file://` do cache (câmera real), que é
+ * copiado, e um `data:` URI em base64 (simulador de diagnóstico em __DEV__),
+ * que é decodificado para um arquivo de verdade.
+ *
+ * Se falhar, devolve o `tempUri` original e registra a causa.
+ *
+ * @param tempUri URI temporária da imagem capturada ou selecionada.
+ * @returns URI persistente da imagem, ou `tempUri` se não foi possível salvar.
  */
 export async function saveImagePersistently(tempUri: string): Promise<string> {
-  if (Platform.OS === 'web') {
-    // base64 data URIs (webcam captures) can be several MB — don't persist in SQLite
-    if (tempUri.startsWith('data:')) {
-      return 'web://local-capture';
-    }
-    return tempUri;
-  }
-
   try {
-    const filename = `diag_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
-    const source = new File(tempUri);
+    const dataUri = DATA_URI_BASE64.exec(tempUri);
+    const extensao = dataUri ? (EXTENSAO_POR_MIME[dataUri[1].toLowerCase()] ?? 'jpg') : 'jpg';
+    const filename = `diag_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${extensao}`;
     const destination = new File(Paths.document, filename);
 
-    console.log(`[ImageHelper] Copying image from ${tempUri} to persistent path ${destination.uri}`);
-    await source.copy(destination);
+    if (tempUri.startsWith('data:')) {
+      if (!dataUri) {
+        throw new Error('data: URI sem codificação base64 não é suportado.');
+      }
+      console.log(`[ImageHelper] Writing data URI to persistent path ${destination.uri}`);
+      destination.create();
+      destination.write(dataUri[2], { encoding: 'base64' });
+    } else {
+      const source = new File(tempUri);
+      console.log(`[ImageHelper] Copying image from ${tempUri} to persistent path ${destination.uri}`);
+      await source.copy(destination);
+    }
 
     return destination.uri;
-  } catch {
-    console.error('[ImageHelper] Failed to save image persistently, returning original cache path.');
+  } catch (erro) {
+    console.error('[ImageHelper] Failed to save image persistently, returning original cache path.', erro);
     return tempUri;
   }
 }

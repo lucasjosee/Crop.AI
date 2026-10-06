@@ -194,6 +194,49 @@ describe('chatRepository', () => {
     expect(sql).toContain('ORDER BY s.updated_at DESC');
   });
 
+  it('listSessions com limite aplica LIMIT e devolve a lista mapeada', async () => {
+    mocks.execute.mockResolvedValueOnce(
+      rows([
+        {
+          id: 's1',
+          title: 'Ferrugem',
+          updated_at: '2026-09-14T12:00:00.000Z',
+          origin_diagnostic_local_id: 'd1',
+          message_count: 2,
+          last_message_content: 'e agora?',
+          last_message_role: 'user',
+        },
+      ])
+    );
+
+    const lista = await listSessions(3);
+
+    const [sql, params] = mocks.execute.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('LIMIT ?');
+    expect(params).toEqual([3]);
+    expect(lista).toEqual([
+      {
+        id: 's1',
+        title: 'Ferrugem',
+        updatedAt: '2026-09-14T12:00:00.000Z',
+        lastMessageContent: 'e agora?',
+        lastMessageRole: 'user',
+        originDiagnosticLocalId: 'd1',
+        messageCount: 2,
+      },
+    ]);
+  });
+
+  it('listSessions sem argumento não aplica LIMIT e não passa parâmetros', async () => {
+    await listSessions();
+
+    const [sql, params] = mocks.execute.mock.calls[0] as [string, unknown[] | undefined];
+    // Não `not.toContain('LIMIT')`: a consulta já tem dois `LIMIT 1` nas
+    // subconsultas da última mensagem. O que não pode existir é o LIMIT externo.
+    expect(sql).not.toContain('LIMIT ?');
+    expect(params).toBeUndefined();
+  });
+
   it('renameSession faz trim, bump em updated_at e marca PENDING', async () => {
     // Relógio congelado: prova que updated_at é o instante atual, não um
     // valor velho ou fixo — é essa guarda monotônica que o servidor exige

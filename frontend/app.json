@@ -14,6 +14,7 @@
       }
     },
     "android": {
+      "package": "br.com.cropai",
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png",

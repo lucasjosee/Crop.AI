@@ -62,6 +62,10 @@ export interface DiagnosisDetails {
 export interface CatalogDisease {
   id: string;
   nomeComum: string;
+  /** Nulos são possíveis: só `id` e `nome_comum` são NOT NULL no schema. */
+  nomeCientifico: string | null;
+  sintomas: string | null;
+  nivelSeveridade: number | null;
 }
 
 const SEM_VEREDITO: DiagnosisCrossValidation = {
@@ -187,11 +191,16 @@ export async function loadDiagnosisDetails(attachment: ChatAttachment): Promise<
   return { doenca, defensivos, crossValidation, feedbackJaEnviado };
 }
 
-/** Só para a correção do produtor no RF06; carregada sob demanda. */
+/** Serve à correção do produtor (RF06) e à tela `/catalogo`; carregada sob demanda. */
 export async function listCatalogDiseases(): Promise<CatalogDisease[]> {
-  const res = await dbDriver.execute('SELECT id, nome_comum FROM doencas ORDER BY nome_comum;');
+  const res = await dbDriver.execute(
+    'SELECT id, nome_comum, nome_cientifico, sintomas, nivel_severidade FROM doencas ORDER BY nome_comum;'
+  );
   return (res.rows._array as Array<Record<string, any>>).map((r) => ({
     id: r.id,
     nomeComum: r.nome_comum,
+    nomeCientifico: r.nome_cientifico ?? null,
+    sintomas: r.sintomas ?? null,
+    nivelSeveridade: r.nivel_severidade ?? null,
   }));
 }
