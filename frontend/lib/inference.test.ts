@@ -22,11 +22,19 @@ let runImageInference: InferenceModule['runImageInference'];
 let LABELS_LIST: InferenceModule['LABELS_LIST'];
 let LABELS_MAP: InferenceModule['LABELS_MAP'];
 
-/** Vetor de probabilidades com 17 posições e o máximo no índice pedido. */
-function probabilitiesWithPeakAt(index: number): Float32Array {
-  const probs = new Float32Array(LABELS_LIST.length).fill(0.01);
-  probs[index] = 0.9;
-  return probs;
+/**
+ * Saída do modelo como a biblioteca real a devolve: um ArrayBuffer cru
+ * (TfliteModel.run: Promise<ArrayBuffer[]>), nunca um Float32Array.
+ */
+function bufferDeProbabilidades(total: number, pico: number): ArrayBuffer {
+  const probs = new Float32Array(total).fill(0.01);
+  probs[pico] = 0.9;
+  return probs.buffer;
+}
+
+/** Saída com 17 posições (uma por classe) e o máximo no índice pedido. */
+function probabilitiesWithPeakAt(index: number): ArrayBuffer {
+  return bufferDeProbabilidades(LABELS_LIST.length, index);
 }
 
 describe('runImageInference (caminho nativo)', () => {
@@ -49,6 +57,26 @@ describe('runImageInference (caminho nativo)', () => {
     expect(result.confidence).toBe(0.9);
     expect(result.modelUsed).toBe('tflite_custom_vision_mobile_v1.0');
     expect(result.inferenceTimeMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('entrega ao modelo um ArrayBuffer, não um Float32Array', async () => {
+    mocks.run.mockResolvedValue([probabilitiesWithPeakAt(0)]);
+
+    await runImageInference('file:///folha.jpg');
+
+    const entrada = mocks.run.mock.calls[0][0][0];
+    expect(entrada).toBeInstanceOf(ArrayBuffer);
+    expect(entrada.byteLength).toBe(300 * 300 * 3 * 4);
+  });
+
+  it('interpreta a saída ArrayBuffer como Float32Array e resolve a classe do pico', async () => {
+    const mancha = LABELS_LIST.indexOf('Mancha Alvo');
+    mocks.run.mockResolvedValue([bufferDeProbabilidades(17, mancha)]);
+
+    const result = await runImageInference('file:///folha.jpg');
+
+    expect(result.diseaseId).toBe(LABELS_MAP['Mancha Alvo']);
+    expect(result.confidence).toBe(0.9);
   });
 
   it('redimensiona para 300x300 antes de inferir', async () => {
@@ -81,8 +109,8 @@ describe('runImageInference (caminho nativo)', () => {
   });
 
   it('rejeita e nunca resolve com Saudável quando o modelo devolve mais classes que LABELS_LIST', async () => {
-    const saida = new Float32Array(18).fill(0.01);
-    saida[17] = 0.9; // índice fora de LABELS_LIST (17 classes, índices 0-16)
+    // índice 17 fora de LABELS_LIST (17 classes, índices 0-16)
+    const saida = bufferDeProbabilidades(18, 17);
     mocks.run.mockResolvedValue([saida]);
 
     let resultado: Awaited<ReturnType<typeof runImageInference>> | undefined;
@@ -99,8 +127,7 @@ describe('runImageInference (caminho nativo)', () => {
   });
 
   it('rejeita quando o modelo devolve menos classes que LABELS_LIST', async () => {
-    const saida = new Float32Array(16).fill(0.01);
-    saida[15] = 0.9;
+    const saida = bufferDeProbabilidades(16, 15);
     mocks.run.mockResolvedValue([saida]);
 
     await expect(runImageInference('file:///folha.jpg')).rejects.toThrow();

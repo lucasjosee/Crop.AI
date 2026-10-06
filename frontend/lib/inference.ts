@@ -1,4 +1,4 @@
-import { loadTensorflowModel } from 'react-native-fast-tflite';
+import { loadTensorflowModel, type TensorflowModel } from 'react-native-fast-tflite';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as jpeg from 'jpeg-js';
 import { Buffer } from 'buffer';
@@ -60,7 +60,7 @@ export const LABELS_LIST = [
  * @param imageUri Image source URI (local file path or data URI).
  * @param forcedMode Optional override to force a specific result (useful for testing and debug controls).
  */
-let _cachedNativeModel: any = null;
+let _cachedNativeModel: TensorflowModel | null = null;
 
 export async function runImageInference(
   imageUri: string,
@@ -116,12 +116,12 @@ export async function runImageInference(
     }
 
     // E. Execute inference on local model
-    const outputs = await model.run([floatBuffer]);
+    const outputs = await model.run([floatBuffer.buffer]);
     if (!outputs || outputs.length === 0) {
       throw new Error('O modelo não retornou probabilidades de classificação.');
     }
 
-    const probabilities = outputs[0] as Float32Array;
+    const probabilities = new Float32Array(outputs[0]);
 
     // O argmax abaixo itera a saída do modelo, não LABELS_LIST. Se as duas
     // discordarem, o índice vencedor pode não ter rótulo — e o app não pode
