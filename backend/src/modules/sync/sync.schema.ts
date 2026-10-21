@@ -17,7 +17,7 @@ export const diagnosticItemSchema = z.object({
   local_id: z.string().uuid(),
   timestamp: parsableTimestamp,
   image_s3_key: z.string().min(1),
-  location: z.object({ lat: z.number(), lng: z.number() }),
+  location: z.object({ lat: z.number(), lng: z.number() }).nullable(),
   ai_result: z.object({
     doenca_id: z.string().uuid().nullable(),
     confianca: z.number(),

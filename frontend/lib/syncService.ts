@@ -97,7 +97,7 @@ export async function syncPendingDiagnostics(includeFailed = false): Promise<Ste
       local_id: r.local_id,
       timestamp: toIso(r.timestamp),
       image_s3_key: r.image_s3_key,
-      location: { lat: r.latitude ?? 0, lng: r.longitude ?? 0 },
+      location: r.latitude != null && r.longitude != null ? { lat: r.latitude, lng: r.longitude } : null,
       ai_result: {
         doenca_id: r.doenca_id,
         confianca: r.confianca_ia ?? 0,

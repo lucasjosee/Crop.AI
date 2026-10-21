@@ -121,8 +121,8 @@ export class SyncService {
             .update(diagnosticos)
             .set({
               imageS3Key: item.image_s3_key,
-              latitude: item.location.lat,
-              longitude: item.location.lng,
+              latitude: item.location?.lat ?? null,
+              longitude: item.location?.lng ?? null,
               doencaId: item.ai_result.doenca_id,
               confiancaIa: item.ai_result.confianca,
               modeloUsado: item.ai_result.modelo_usado,
@@ -158,8 +158,8 @@ export class SyncService {
             userId,
             mobileLocalId: item.local_id,
             imageS3Key: item.image_s3_key,
-            latitude: item.location.lat,
-            longitude: item.location.lng,
+            latitude: item.location?.lat ?? null,
+            longitude: item.location?.lng ?? null,
             doencaId: item.ai_result.doenca_id,
             confiancaIa: item.ai_result.confianca,
             modeloUsado: item.ai_result.modelo_usado,

@@ -23,9 +23,6 @@ import { runImageInference, type InferenceResult } from '../lib/inference';
 import { resolveDiseaseName } from '../lib/diagnosisDetails';
 import { startDiagnosisSession } from '../lib/diagnosisSessionService';
 
-/** Região de soja em Sorriso, MT — usada quando o GPS nega ou demora. */
-const GPS_PADRAO = { latitude: -12.5422, longitude: -55.7144 };
-
 /** Imagem mínima para o simulador de diagnóstico; só existe sob __DEV__. */
 const IMAGEM_MOCK =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -58,7 +55,7 @@ export default function CameraScreen() {
   const [etapa, setEtapa] = useState<Etapa>('VISOR');
   const [captura, setCaptura] = useState<Captura | null>(null);
   const [flash, setFlash] = useState<'off' | 'on'>('off');
-  const [gps, setGps] = useState(GPS_PADRAO);
+  const [gps, setGps] = useState<{ latitude: number; longitude: number } | null>(null);
   const [confirmando, setConfirmando] = useState(false);
   const [debugAberto, setDebugAberto] = useState(false);
 
@@ -72,10 +69,11 @@ export default function CameraScreen() {
         if (status !== 'granted') return;
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         setGps({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-      } catch {
-        // O padrão já está no estado; um diagnóstico sem coordenada exata vale
-        // mais do que nenhum diagnóstico.
-        console.warn('[Camera] GPS indisponível; usando a coordenada padrão.');
+      } catch (erro) {
+        // Sem leitura, o estado fica nulo e o diagnóstico é gravado sem
+        // posição: uma coordenada inventada viraria pino indistinguível de
+        // uma leitura real.
+        console.warn('[Camera] GPS indisponível; o diagnóstico será gravado sem posição.', erro);
       }
     })();
   }, []);

@@ -127,6 +127,29 @@ describe('syncService', () => {
     expect((syncCall?.[1] as any).diagnostics[0].cross_validation.status).toBe('SKIPPED');
   });
 
+  it('diagnóstico sem posição sobe com location nulo, nunca (0,0)', async () => {
+    seedDiagnostic({ local_id: 'l1', latitude: null, longitude: null });
+    seedDiagnostic({ local_id: 'l2', latitude: -12.5, longitude: null });
+    vi.mocked(api.post).mockImplementation(async (url: string) => {
+      if (url.includes('/upload/url')) {
+        return { data: { upload_url: 'https://s3.local/put', s3_key: 'diagnosticos/u/x.jpg', expires_in: 600 } } as any;
+      }
+      return {
+        data: { status: 'success', synced_count: 2, failed_count: 0, synced_items: [], failed_items: [] },
+      } as any;
+    });
+
+    await syncPendingDiagnostics();
+
+    const syncCall = vi.mocked(api.post).mock.calls.find((call) =>
+      String(call[0]).includes('/sync/diagnostics')
+    );
+    const itens = (syncCall?.[1] as any).diagnostics;
+    expect(itens).toHaveLength(2);
+    expect(itens[0].location).toBeNull();
+    expect(itens[1].location).toBeNull();
+  });
+
   it('falha no upload mantém PENDING e não envia o lote (T5.8)', async () => {
     const row = seedDiagnostic();
     vi.mocked(api.post).mockResolvedValue({
