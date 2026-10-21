@@ -130,7 +130,7 @@ export async function initDatabase(): Promise<IDatabaseDriver> {
       return dbDriver;
     } catch (error) {
       initPromise = null;
-      console.error('[Database] Native encrypted database initialization failed.');
+      console.error('[Database] Native encrypted database initialization failed.', error);
       throw error;
     }
   })();

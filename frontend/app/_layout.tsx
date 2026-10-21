@@ -39,7 +39,7 @@ export default function RootLayout() {
         initNetworkSensing();
         console.info(`[Performance] App ready in ${Date.now() - APP_BOOT_STARTED_AT}ms.`);
       } catch (err) {
-        console.error('[RootLayout] App boot failed.');
+        console.error('[RootLayout] App boot failed.', err);
         setBootError(true);
       }
     }
