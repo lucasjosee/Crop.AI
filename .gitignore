@@ -153,7 +153,7 @@ __pycache__/
 venv/
 env/
 
-# Documentação — mantida fora do repositório, em ../CropAI-docs
+# Documentação — mantida fora do repositório, em ../../CropAI-docs (~/Documentos/CropAI-docs)
 Documentação/
 docs/
 
