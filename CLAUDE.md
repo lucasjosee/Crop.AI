@@ -8,7 +8,7 @@ Iniciado em 26/05/2026. Autor único. Reescrito em **20/10/2026** a partir de le
 
 - A reformulação em sete sub-projetos — *"a conversa é a unidade, e o diagnóstico é a primeira mensagem dela"* — está **completa e inteira em `main`**. O PR #11 (sub-projeto 7 mais os consertos da primeira execução) foi mergeado em **06/10/2026**.
 - A branch local `feat/tela-principal` já está toda em `origin/main`, e o `main` local está atrás do remoto. **Trabalho novo sai de `origin/main` atualizado**, nunca dessa branch.
-- Suítes: frontend **269 testes / 27 arquivos**, backend **82 / 13**. Typecheck limpo nos dois.
+- Suítes: frontend **272 testes / 27 arquivos**, backend **84 / 13**. Typecheck limpo nos dois.
 - **O app rodou uma única vez, em emulador (27/09). Nunca em aparelho real.** Esse é o passo de maior retorno, à frente de qualquer código.
 - Próximo trabalho desenhado: **Home v2** (`especificacoes/2026-09-27-home-v2-design.md`), com barra de navegação real, prévia do mapa no topo e Analisar no centro. Está **bloqueada** pela chave do Google Maps para Android.
 
@@ -77,7 +77,7 @@ vi.mock('../db/sqlite', () => ({ dbDriver: { execute: mocks.execute } }));
 
 - O frontend roda vitest sem arquivo de configuração. `store/test-globals.ts` define `__DEV__` e é importado pelos testes que precisam dele.
 - O backend testa **integração contra Postgres real**, com `fileParallelism: false` porque as suítes limpam as mesmas tabelas. O `vitest.config.ts` desliga o rate limit, e `src/app.test.ts` o religa para testá-lo. A rota `GET /api/v1/protected` existe só para os testes de auth.
-- **O fake de `dbDriver` não impõe foreign key, `UNIQUE` nem `ON CONFLICT`.** SQL que dependa disso precisa ser provado também contra SQLite de verdade (um `python3 -c 'import sqlite3 …'` basta). Foi assim que o defeito da limpeza de 30 dias passou (ver "Dívidas").
+- **O fake de `dbDriver` não impõe foreign key, `UNIQUE` nem `ON CONFLICT`.** SQL que dependa disso precisa ser provado também contra SQLite de verdade (um `python3 -c 'import sqlite3 …'` basta). Foi assim que o defeito da limpeza de 30 dias passou, até ser achado e removido em 20/10.
 
 ## Arquitetura
 
@@ -131,14 +131,14 @@ Health check com timeout de 2 s, a cada 15 s. Latência acima de 1000 ms dá `DE
 
 ### Store & Forward
 
-`runFullSync()` em `lib/syncService.ts`, sequencial: **diagnósticos → feedbacks → conversas → varredura de segundas opiniões → catálogo → limpeza**.
+`runFullSync()` em `lib/syncService.ts`, sequencial: **diagnósticos → feedbacks → conversas → varredura de segundas opiniões → catálogo**.
 
 - Dispara sozinho em `_layout.tsx:55`, com 2 s de debounce, em **qualquer transição para `ONLINE`**. O parâmetro `includeFailed` existe, mas **nenhuma tela o aciona**: não há sync manual.
 - As filas seguem `PENDING | SYNCING | SYNCED | FAILED` + `retry_count`; **5 falhas dão `FAILED`** (`syncContracts.ts`).
 - **A imagem sobe antes** do lote que a referencia, por presigned PUT. Se o upload falhar, o item fica `PENDING`.
 - Conversas sobem em envelopes por sessão (até 20 conversas por requisição e 200 mensagens por conversa; uma sessão maior vai em mais de um envelope), **só sobem** e **nunca são apagadas por idade**.
 - A segunda opinião que faltou por falta de rede é re-tentada **até 3 vezes**, no máximo **20 por rodada**, com contador próprio (`cross_validation_retry_count`, v8).
-- Linhas `SYNCED` de `fila_diagnosticos` e `fila_feedbacks` com mais de 30 dias são apagadas — e **essa limpeza está quebrada** (ver "Dívidas").
+- **Nada nas filas expira.** A linha do diagnóstico é o que o card (veredito), o pino do mapa e o contexto do chat (`getSessionDiseaseId`) leem, e a de feedback é o que esconde o painel de feedback; a conversa que as referencia nunca expira. Até 20/10 havia uma limpeza de 30 dias: o `DELETE` de diagnósticos falhava sempre pela FK de `chat_sessions` e derrubava o `runFullSync`, e o de feedbacks fazia o painel reaparecer. **Não reintroduzir limpeza por idade** sem antes resolver o que a conversa lê.
 
 ## Mapa do código
 
@@ -212,6 +212,7 @@ Health check com timeout de 2 s, a cada 15 s. Latência acima de 1000 ms dá `DE
 - **Rate limit se declara na rota** (`config: routeRateLimit(...)`), nunca no `app.register()`: ali ele vira opção do plugin, que o `@fastify/rate-limit` ignora. O balde é chaveado por usuário, com queda para o IP. `RATE_LIMIT_ENABLED=false` desliga tudo.
 - O envelope de erro é sempre `{ error: { code, message, details } }`, e a fonte de verdade são os schemas Zod em `modules/*/*.schema.ts`.
 - O sync de diagnósticos e feedbacks vai em lote de 1 a 50, **validado item a item**: um item inválido volta em `failed_items` e não derruba o lote. É idempotente por `(user_id, local_id)`.
+- `location` do diagnóstico aceita `null` (sem leitura de GPS) desde 20/10; objeto parcial continua inválido. **Backend antes do cliente** quando houver produção: um cliente novo mandando `null` a um backend antigo leva `VALIDATION_ERROR` por item, e o item caminha para `FAILED`.
 - Access token JWT de 15 min; refresh **opaco**, de 30 dias, hasheado e rotativo. **Reuso de refresh revoga todas as sessões** (`403 REFRESH_DENIED`).
 - O presigned URL vale 600 s, e a chave nasce sob `diagnosticos/{user_id}/`. **Esse prefixo é a fronteira de posse**, verificada no sync e na segunda opinião. A API nunca trafega o binário.
 - A segunda opinião é idempotente, recusa imagem acima de 10 MB e tem timeout de 15 s. Falha grava **`SKIPPED`, nunca `PENDING`**: senão o cliente re-tentaria sem teto, e cada ciclo custa uma leitura no S3 e uma inferência paga.
@@ -236,6 +237,7 @@ Cada uma existe por um motivo concreto, e quebrar qualquer uma é bug de produto
 
 - **O resultado do CV local aparece antes de qualquer chamada de rede.**
 - **Divergência entre o CV e o LLM é sempre exibida.** Esconder uma das opiniões pode levar à aplicação errada de defensivo, com dano real na lavoura.
+- **Sem leitura de GPS, sem posição.** Nunca inventar coordenada, nem padrão plausível nem `(0,0)`: o diagnóstico é gravado com posição nula e não vira pino.
 - **Na dúvida sobre a classe, sinalizar — nunca afirmar saúde.** Dizer "planta sadia" sem base é o erro mais caro deste app. Classe sem mapeamento em `inference.ts` **lança erro**; nunca cai para `'Saudável'`.
 - **"Problema", nunca "doença"**, para a classe agregada do mapa: *Fitotoxicidade* é dano químico, e `TipoPino` é `'SAUDAVEL' | 'PROBLEMA'` por isso.
 - **`Saudável` e `Fitotoxicidade` não são doenças do catálogo.** Sincronizam com `doenca_id` nulo e não têm defensivo.
@@ -255,12 +257,12 @@ A origem de todas as falhas caras deste projeto. **Antes de confiar em qualquer 
 | `react-native-fast-tflite` | `lib/inference.ts` | Tipada (`TensorflowModel`) desde 06/10 | Carregou no emulador. O `run()` foi corrigido em 06/10, **sem registro de nova execução depois** |
 | `react-native-vision-camera` | `app/camera.tsx` | Tipada | A câmera abriu no emulador. **O obturador nunca capturou uma foto real** |
 | `op-sqlite` + SQLCipher | `db/sqlite.ts` | **`any`** (`nativeDb`, `require`) | Sim: boot e nove migrações no emulador |
-| `llama.rn` | `lib/slmChatService.ts` | **`any`** (`llamaContext`, `require`) | **Nunca** — o `.gguf` nunca esteve num aparelho |
+| `llama.rn` | `lib/slmChatService.ts` | Tipada (`LlamaContext`, `require` tipado) desde 20/10 | **Nunca** — o `.gguf` nunca esteve num aparelho |
 | `react-native-maps` | `app/mapa.tsx` | Tipada | Sem chave Android, desenha em branco |
 
-**`llama.rn` é a quarta ocorrência esperando para acontecer**: tem a mesma forma das três anteriores, `any` mais `require` sobre a fronteira, e nunca executou. Em 20/10 conferi que os nomes usados (`initLlama`, `completion`, `stopCompletion`, `release` e os parâmetros passados) existem na tipagem instalada da 0.12.4. Mesmo assim, o `any` impede o typecheck de garantir isso, e o `catch {}` de `loadSlmModel` (`slmChatService.ts:58`) **descarta a causa** da falha. Antes da primeira execução com o `.gguf`, tipar com `LlamaContext` e logar o erro.
+**`llama.rn` tinha a forma da quarta ocorrência**: `any` mais `require` sobre a fronteira, sem nunca ter executado. Em 20/10 passou a ser tipado pela tipagem instalada da 0.12.4 (`LlamaContext | null` e `require('llama.rn') as typeof import('llama.rn')`, que mantém o carregamento preguiçoso), e o typecheck agora confere `initLlama`, `completion`, `stopCompletion` e `release`. **Tipado não é executado**: a primeira execução com o `.gguf` continua sendo o teste de verdade. Resta `op-sqlite` como `any` (`nativeDb`), que já executou nove migrações no emulador.
 
-O boot tem o mesmo problema: `db/sqlite.ts:133` e `_layout.tsx:42` registram a falha **sem o objeto de erro**. Num aparelho real, um boot que falhe não dirá por quê.
+Desde 20/10, os `catch` da fronteira registram o objeto de erro: `loadSlmModel`, `unloadSlmModel`, a inicialização do banco (`db/sqlite.ts`), o boot (`_layout.tsx`) e o GPS da câmera. No do banco, **só o erro, nunca as opções de abertura**, que levam a chave do SQLCipher.
 
 ## Armadilhas que já custaram caro
 
@@ -291,8 +293,8 @@ cd backend && npm ci && npm run db:migrate && npm run db:seed && npm run dev
 curl http://localhost:3000/api/v1/health
 
 # testes e typecheck — cada pacote no seu diretório; `lint` é alias de typecheck
-cd frontend && npm test && npm run typecheck   # 269 / 27, sem dependência externa
-cd backend  && npm test && npm run typecheck   # 82 / 13, exige o Postgres do compose no ar
+cd frontend && npm test && npm run typecheck   # 272 / 27, sem dependência externa
+cd backend  && npm test && npm run typecheck   # 84 / 13, exige o Postgres do compose no ar
 ```
 
 O CI (`.github/workflows/ci.yml`) roda lint, typecheck e testes nos dois pacotes, `db:migrate -- --force` e `build` no backend, com Node 22 e Postgres 16.
@@ -309,7 +311,7 @@ cd frontend && EXPO_PUBLIC_API_URL=http://localhost:3000 npx expo run:android
 
 **Use `adb reverse` com `S3_ENDPOINT=http://localhost:9000`, não `10.0.2.2`.** O backend usa **um único** `S3Client` para duas coisas: assinar o presigned, que o aparelho acessa, e baixar a imagem na segunda opinião, que o próprio backend acessa. `10.0.2.2` só existe de dentro do emulador; do host ele sai pelo roteador. Com `10.0.2.2`, o upload funciona, mas **a segunda opinião não tem como baixar a imagem** e cai em `SKIPPED`; o `.env` local ficou assim até 20/10 (backup em `.env.bak-2026-10-20`). Com `adb reverse`, `localhost` serve aos dois lados. Em aparelho físico pela rede, o IP da LAN também serve aos dois lados.
 
-No emulador a câmera é uma cena 3D falsa: use o **simulador de diagnóstico** (ícone de inseto na câmera, só sob `__DEV__`), que roda o pipeline real sem folha. Sem posição injetada no emulador, o GPS falha (ver "Dívidas").
+No emulador a câmera é uma cena 3D falsa: use o **simulador de diagnóstico** (ícone de inseto na câmera, só sob `__DEV__`), que roda o pipeline real sem folha. Sem posição injetada no emulador, o GPS falha, e o diagnóstico é gravado sem posição: não vira pino no mapa.
 
 ### Modelo SLM (cópia manual)
 
@@ -332,11 +334,9 @@ adb shell run-as br.com.cropai cp /data/local/tmp/gemma-2-2b-it-Q4_K_M.gguf file
 
 ## Dívidas conhecidas
 
-**Achados em 20/10/2026, ao escrever este arquivo — nenhum corrigido:**
+**Achados em 20/10/2026, ao escrever este arquivo.** Quatro foram corrigidos no mesmo dia (spec `especificacoes/2026-10-20-consertos-da-conferencia-design.md`): a limpeza de 30 dias saiu, GPS ausente passou a gravar posição nula, o `S3_ENDPOINT` do emulador virou `localhost` com `adb reverse`, e o `llama.rn` foi tipado. Fica um:
 
-1. **A limpeza de 30 dias vai quebrar todo sync completo.** `cleanupSyncedRecords` (`syncService.ts:163`) apaga linhas `SYNCED` de `fila_diagnosticos`, mas `chat_sessions.origin_diagnostic_local_id` (`db/sqlite.ts:411`) é `REFERENCES fila_diagnosticos` com `foreign_keys = ON`, e toda foto tem sessão. O `DELETE` inteiro falha com `FOREIGN KEY constraint failed` (reproduzido em SQLite puro), e como é a última etapa do `runFullSync`, **todo sync termina com erro a partir do 30º dia** do primeiro diagnóstico sincronizado. Nenhum dado se perde, porque a FK protege. Mas há uma contradição de desenho: a conversa nunca expira, e o diagnóstico que ela referencia (veredito da segunda opinião, pino do mapa) foi feito para expirar. **Decisão de produto antes do conserto.**
-2. **GPS ausente vira coordenada verdadeira.** `camera.tsx:27` usa `GPS_PADRAO` (-12.5422, -55.7144), um ponto plausível no Mato Grosso, quando a permissão é negada ou a leitura falha. O diagnóstico vira pino no mapa, **indistinguível de leitura real**. O servidor tornou `latitude`/`longitude` nuláveis justamente para não confundir `(0,0)` com leitura; o cliente contorna isso com um ponto mais plausível ainda. `syncService.ts:100` ainda manda `?? 0`. Fere "na dúvida, sinalizar".
-3. **O auto-sync dispara também em `DEGRADED → ONLINE`.** Com latência perto de 1000 ms, a oscilação gera syncs em série (no emulador, dois em 5 s), e cada um varre as segundas opiniões, que são pagas.
+1. **O auto-sync dispara também em `DEGRADED → ONLINE`.** Com latência perto de 1000 ms, a oscilação gera syncs em série (no emulador, dois em 5 s), e cada um varre as segundas opiniões, que são pagas.
 
 **Herdadas das specs e sem dono:**
 

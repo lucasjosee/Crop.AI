@@ -17,7 +17,7 @@ pronto para publicação nas lojas.**
 |---|---|
 | Culturas | Soja |
 | Classes de visão computacional | 17 (16 problemas + Saudável) |
-| Testes | 82 backend, 269 frontend |
+| Testes | 84 backend, 272 frontend |
 | Execuções | Uma, em emulador (27/09/2026). Nunca em aparelho real |
 
 ## Stack
