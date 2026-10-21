@@ -70,6 +70,15 @@ describe('startDiagnosisSession', () => {
     expect(msgParams).toEqual(expect.arrayContaining(['id-2', 'user', '']));
   });
 
+  it('sem posição, grava latitude e longitude nulas', async () => {
+    await startDiagnosisSession(input({ gps: null }));
+
+    const [, params] = call('INSERT INTO fila_diagnosticos');
+    // local_id, server_id, image_uri, image_s3_key, latitude, longitude
+    expect(params[4]).toBeNull();
+    expect(params[5]).toBeNull();
+  });
+
   it('a imagem é persistida antes de qualquer escrita no banco', async () => {
     await startDiagnosisSession(input());
 

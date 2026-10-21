@@ -119,6 +119,36 @@ describe('POST /api/v1/sync/diagnostics (integration)', () => {
     expect(rows).toHaveLength(1);
   });
 
+  it('aceita diagnóstico sem posição e grava latitude e longitude nulas, inclusive no reenvio', async () => {
+    const localId = randomUUID();
+    const enviar = () => app.inject({
+      method: 'POST',
+      url: '/api/v1/sync/diagnostics',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      payload: { diagnostics: [{ ...makeDiagnostic(localId), location: null }] },
+    });
+    const first = JSON.parse((await enviar()).body);
+    expect(first.synced_count).toBe(1);
+    const second = JSON.parse((await enviar()).body);
+    expect(second.synced_count).toBe(1);
+
+    const [row] = await db.select().from(diagnosticos).where(eq(diagnosticos.mobileLocalId, localId));
+    expect(row.latitude).toBeNull();
+    expect(row.longitude).toBeNull();
+  });
+
+  it('rejeita location parcial como item inválido', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/sync/diagnostics',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      payload: { diagnostics: [{ ...makeDiagnostic(randomUUID()), location: { lat: -12.5 } }] },
+    });
+    const body = JSON.parse(res.body);
+    expect(body.failed_count).toBe(1);
+    expect(body.failed_items[0].error_code).toBe('VALIDATION_ERROR');
+  });
+
   it('retorna partial com INVALID_DOENCA_ID para doença inexistente', async () => {
     const bad = makeDiagnostic(randomUUID());
     bad.ai_result = { ...bad.ai_result, doenca_id: randomUUID() };

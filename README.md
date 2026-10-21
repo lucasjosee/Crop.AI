@@ -16,8 +16,9 @@ pronto para publicação nas lojas.**
 | | |
 |---|---|
 | Culturas | Soja |
-| Classes de visão computacional | 17 (16 doenças + Saudável) |
-| Testes | 65 backend, 54 frontend |
+| Classes de visão computacional | 17 (16 problemas + Saudável) |
+| Testes | 84 backend, 272 frontend |
+| Execuções | Uma, em emulador (27/09/2026). Nunca em aparelho real |
 
 ## Stack
 
@@ -64,13 +65,19 @@ npm run db:seed
 npm run dev                   # http://localhost:3000
 ```
 
-Em outro terminal:
+Em outro terminal, com o emulador Android aberto:
 
 ```bash
+adb reverse tcp:3000 tcp:3000 && adb reverse tcp:9000 tcp:9000
 cd frontend
 npm ci
-npx expo start
+npx expo run:android
 ```
+
+O `adb reverse` faz `localhost` servir ao emulador e ao backend ao mesmo tempo;
+sem ele, a segunda opinião não consegue baixar a imagem do MinIO. Aparelho
+físico pela rede e as demais variáveis estão no guia de ambiente local da
+documentação.
 
 Verifique com:
 
@@ -89,16 +96,23 @@ cd frontend && npm test
 
 O **chat offline exige que o modelo `.gguf` já esteja no aparelho**. A
 distribuição automática do modelo ainda não foi implementada; hoje o arquivo
-precisa ser copiado manualmente para `documentDirectory/models/`. Sem ele, o
-Modo Campo não responde.
+precisa ser copiado manualmente para
+`/data/user/0/br.com.cropai/files/models/gemma-2b-it-q4_k_m.gguf`. Sem ele, o
+Modo Campo não responde, mas o card do diagnóstico continua aparecendo.
 
 ## Estrutura
 
 ```
 backend/    API Fastify, schema Drizzle e integrações
 frontend/   Aplicativo Expo / React Native
-seed/       Catálogo de doenças e defensivos em JSON
 ```
+
+O catálogo de doenças e defensivos vive em JSON em dois lugares, que são cópias
+entre si: `backend/src/db/seeds/` (Postgres) e `frontend/db/seeds/` (o banco do
+aparelho). Mudar o catálogo exige mudar os dois.
+
+A documentação (arquitetura, ADRs, especificações e planos) fica fora deste
+repositório.
 
 ## Aviso legal
 

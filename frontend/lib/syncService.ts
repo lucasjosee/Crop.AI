@@ -4,11 +4,11 @@ import { syncCatalog } from './catalogSyncService';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { ensureDiagnosticImageUploaded } from './diagnosticImageUploadService';
-import { MAX_RETRIES, CLEANUP_DAYS, type StepResult } from './syncContracts';
+import { MAX_RETRIES, type StepResult } from './syncContracts';
 import { syncPendingConversations } from './conversationSyncService';
 import { sweepPendingSecondOpinions } from './pendingSecondOpinionService';
 
-export { MAX_RETRIES, CLEANUP_DAYS };
+export { MAX_RETRIES };
 export type { StepResult };
 
 type QueueRow = Record<string, any>;
@@ -97,7 +97,7 @@ export async function syncPendingDiagnostics(includeFailed = false): Promise<Ste
       local_id: r.local_id,
       timestamp: toIso(r.timestamp),
       image_s3_key: r.image_s3_key,
-      location: { lat: r.latitude ?? 0, lng: r.longitude ?? 0 },
+      location: r.latitude != null && r.longitude != null ? { lat: r.latitude, lng: r.longitude } : null,
       ai_result: {
         doenca_id: r.doenca_id,
         confianca: r.confianca_ia ?? 0,
@@ -160,18 +160,6 @@ export async function syncPendingFeedbacks(includeFailed = false): Promise<StepR
   return { synced: data.processed_count ?? 0, failed: data.failed_count ?? 0 };
 }
 
-export async function cleanupSyncedRecords(): Promise<void> {
-  const cutoff = new Date(Date.now() - CLEANUP_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  await dbDriver.execute(
-    "DELETE FROM fila_feedbacks WHERE sync_status = 'SYNCED' AND datetime(timestamp) < datetime(?);",
-    [cutoff]
-  );
-  await dbDriver.execute(
-    "DELETE FROM fila_diagnosticos WHERE sync_status = 'SYNCED' AND datetime(timestamp) < datetime(?);",
-    [cutoff]
-  );
-}
-
 let syncInProgress = false;
 
 export async function runFullSync(opts: { includeFailed?: boolean } = {}): Promise<FullSyncResult> {
@@ -192,7 +180,6 @@ export async function runFullSync(opts: { includeFailed?: boolean } = {}): Promi
     const conversations = await syncPendingConversations(includeFailed);
     const secondOpinions = await sweepPendingSecondOpinions();
     const catalog = await syncCatalog();
-    await cleanupSyncedRecords();
     console.log('[Sync] Sincronização concluída.', {
       diagnostics, feedbacks, conversations, secondOpinions,
     });

@@ -13,7 +13,7 @@ export interface StartDiagnosisSessionInput {
   inference: InferenceResult;
   /** Já resolvido pela câmera para o chip da confirmação; vira o título da sessão. */
   diseaseName: string;
-  gps: { latitude: number; longitude: number };
+  gps: { latitude: number; longitude: number } | null;
   connectionMode: ConnectionMode;
 }
 
@@ -54,8 +54,8 @@ export async function startDiagnosisSession(
       null,
       imageUri,
       null,
-      input.gps.latitude,
-      input.gps.longitude,
+      input.gps?.latitude ?? null,
+      input.gps?.longitude ?? null,
       isEspecial ? null : input.inference.diseaseId,
       input.inference.confidence,
       input.inference.modelUsed,

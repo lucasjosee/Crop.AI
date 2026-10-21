@@ -1,5 +1,6 @@
 // frontend/lib/slmChatService.ts
 import { File, Paths } from 'expo-file-system';
+import type { LlamaContext } from 'llama.rn';
 
 // Path where the .gguf file must exist on the device.
 // Dev: copy manually to documentDirectory/models/
@@ -18,7 +19,7 @@ export interface SlmLoadProgress {
   loaded: boolean;
 }
 
-let llamaContext: any = null;
+let llamaContext: LlamaContext | null = null;
 
 export async function loadSlmModel(
   onProgress: (p: SlmLoadProgress) => void
@@ -36,7 +37,8 @@ export async function loadSlmModel(
       return false;
     }
 
-    const { initLlama } = require('llama.rn');
+    // require preguiçoso: o módulo nativo só carrega aqui; o cast dá a tipagem instalada.
+    const { initLlama } = require('llama.rn') as typeof import('llama.rn');
     onProgress({ progress: 0.05, loaded: false });
 
     llamaContext = await initLlama(
@@ -55,8 +57,8 @@ export async function loadSlmModel(
 
     onProgress({ progress: 1, loaded: true });
     return true;
-  } catch {
-    console.error('[SLM] Failed to initialize model.');
+  } catch (erro) {
+    console.error('[SLM] Falha ao inicializar o modelo.', erro);
     llamaContext = null;
     return false;
   }
@@ -66,8 +68,8 @@ export async function unloadSlmModel(): Promise<void> {
   if (llamaContext) {
     try {
       await llamaContext.release();
-    } catch {
-      console.warn('[SLM] Error releasing model.');
+    } catch (erro) {
+      console.warn('[SLM] Falha ao liberar o modelo.', erro);
     }
     llamaContext = null;
   }
