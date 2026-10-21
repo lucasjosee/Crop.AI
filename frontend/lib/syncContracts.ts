@@ -6,7 +6,6 @@
  */
 
 export const MAX_RETRIES = 5;
-export const CLEANUP_DAYS = 30;
 
 export interface StepResult {
   synced: number;

@@ -186,6 +186,14 @@ describe('syncService', () => {
     expect(vi.mocked(api.post).mock.calls.every(([url]) => !String(url).includes('slm-logs'))).toBe(true);
   });
 
+  it('runFullSync não apaga nada das filas: a conversa e o diagnóstico dela não expiram', async () => {
+    await runFullSync();
+    const deletes = mocks.execute.mock.calls
+      .map(([sql]) => String(sql))
+      .filter((sql) => /^\s*DELETE\b/i.test(sql));
+    expect(deletes).toEqual([]);
+  });
+
   it('runFullSync não roda em modo FIELD', async () => {
     mocks.network.connectionMode = 'FIELD';
     seedDiagnostic();
