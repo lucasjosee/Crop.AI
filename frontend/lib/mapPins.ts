@@ -127,7 +127,7 @@ export function mapaNativoConfigurado(
 }
 
 /**
- * Quatro estados, e não três.
+ * Três estados de rede, e não dois.
  *
  * `PROBING` é o estado inicial de até ~7 s (2 tentativas de 2 s mais 3 s de
  * debounce, por `config/network.ts`). Nele o app **não sabe** se há rede;
