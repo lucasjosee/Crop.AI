@@ -1,4 +1,4 @@
-// frontend/app/index.tsx
+// frontend/app/(tabs)/index.tsx
 // A Home é o resumo do app: blocos de prévia empilhados, e o produtor decide
 // dali para onde ir. Até o sub-projeto 7 esta era a única tela que a
 // reformulação não tinha tocado — tinha duas abas, busca e uma barra inferior
@@ -64,7 +64,7 @@ export default function HomeScreen() {
   }, [logout]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <View style={styles.headerEsquerda}>
           <Ionicons name="leaf" size={26} color={theme.colors.primary} />
@@ -72,14 +72,6 @@ export default function HomeScreen() {
         </View>
         <View style={styles.headerDireita}>
           <ConnectionIndicator />
-          <TouchableOpacity
-            onPress={() => router.push('/catalogo')}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            accessibilityRole="button"
-            accessibilityLabel="Abrir o catálogo de doenças"
-          >
-            <Ionicons name="book-outline" size={24} color={theme.colors.textSecondary} />
-          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => void sair()}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -171,16 +163,6 @@ export default function HomeScreen() {
             </>
           )}
         </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.analisar}
-          onPress={() => router.push('/camera')}
-          accessibilityRole="button"
-          accessibilityLabel="Analisar uma folha com a câmera"
-        >
-          <Ionicons name="camera" size={22} color={theme.colors.surface} />
-          <Text style={styles.analisarTexto}>Analisar</Text>
-        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -246,20 +228,5 @@ const styles = StyleSheet.create({
   mapaContagemTexto: {
     color: theme.colors.textSecondary,
     fontSize: theme.typography.fontSize.sm,
-  },
-  analisar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: theme.spacing.sm,
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.borderRadius.round,
-    paddingVertical: theme.spacing.md,
-    marginTop: theme.spacing.md,
-  },
-  analisarTexto: {
-    color: theme.colors.surface,
-    fontSize: theme.typography.fontSize.md,
-    fontWeight: '600',
   },
 });

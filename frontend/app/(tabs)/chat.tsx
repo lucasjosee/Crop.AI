@@ -1,4 +1,4 @@
-// frontend/app/chat/index.tsx
+// frontend/app/(tabs)/index.tsx
 // A lista das conversas. Até o sub-projeto 5 esta rota criava uma sessão nova
 // a cada mount e redirecionava — por isso o app acumulava conversas vazias.
 // Agora a conversa livre nasce na primeira mensagem, via o sentinela /chat/novo.
@@ -113,16 +113,8 @@ export default function HistoricoScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          accessibilityRole="button"
-          accessibilityLabel="Voltar"
-        >
-          <Text style={styles.backButton}>‹</Text>
-        </TouchableOpacity>
         <Text style={styles.headerTitle}>Conversas</Text>
       </View>
 
@@ -193,7 +185,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
-  backButton: { color: theme.colors.primary, fontSize: 24, marginRight: 12 },
   headerTitle: {
     flex: 1,
     color: theme.colors.text,

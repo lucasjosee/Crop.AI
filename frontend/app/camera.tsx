@@ -180,8 +180,8 @@ export default function CameraScreen() {
       setEtapa('VISOR');
       setConfirmando(false);
       router.push(`/chat/${sessionId}`);
-    } catch {
-      console.error('[Camera] Falha ao criar a conversa do diagnóstico.');
+    } catch (erro) {
+      console.error('[Camera] Falha ao criar a conversa do diagnóstico.', erro);
       Toast.show({
         type: 'error',
         text1: 'Não foi possível abrir a conversa',
@@ -240,7 +240,7 @@ export default function CameraScreen() {
       <View style={styles.barraTopo}>
         <TouchableOpacity
           style={styles.botaoCirculo}
-          onPress={() => router.replace('/')}
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
           accessibilityRole="button"
           accessibilityLabel="Fechar a câmera"
         >

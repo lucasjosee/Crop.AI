@@ -1,4 +1,4 @@
-// frontend/app/mapa.tsx
+// frontend/app/(tabs)/mapa.tsx
 // O mapa das análises. É a única tela do app que exige conexão: os tiles vêm
 // da rede, e embutir mapa offline custaria centenas de MB num app que já
 // carrega 1,5 GB de modelo. Em modo FIELD ela diz isso em vez de mostrar um
@@ -50,21 +50,13 @@ export default function MapaScreen() {
 
   const cabecalho = (
     <View style={styles.header}>
-      <TouchableOpacity
-        onPress={() => router.back()}
-        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        accessibilityRole="button"
-        accessibilityLabel="Voltar"
-      >
-        <Text style={styles.backButton}>‹</Text>
-      </TouchableOpacity>
       <Text style={styles.headerTitle}>Mapa de análises</Text>
     </View>
   );
 
   if (estado === 'CARREGANDO') {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         {cabecalho}
         <View style={styles.centro}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -76,7 +68,7 @@ export default function MapaScreen() {
 
   if (estado === 'SEM_REDE') {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         {cabecalho}
         <View style={styles.centro}>
           <Text style={styles.avisoTitulo}>O mapa precisa de conexão</Text>
@@ -97,7 +89,7 @@ export default function MapaScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {cabecalho}
 
       {carregando || !regiao ? (
@@ -170,7 +162,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
-  backButton: { color: theme.colors.primary, fontSize: 24, marginRight: 12 },
   headerTitle: {
     flex: 1,
     color: theme.colors.text,
