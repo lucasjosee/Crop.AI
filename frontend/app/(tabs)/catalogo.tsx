@@ -7,11 +7,11 @@ import { View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, Activity
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { listCatalogDiseases, type CatalogDisease } from '../lib/diagnosisDetails';
-import { filtrarDoencas, rotuloSeveridade, tipoSeveridade } from '../lib/catalogo';
-import { Card } from '../components/Card';
-import { Badge } from '../components/Badge';
-import { theme } from '../config/theme';
+import { listCatalogDiseases, type CatalogDisease } from '../../lib/diagnosisDetails';
+import { filtrarDoencas, rotuloSeveridade, tipoSeveridade } from '../../lib/catalogo';
+import { Card } from '../../components/Card';
+import { Badge } from '../../components/Badge';
+import { theme } from '../../config/theme';
 
 export default function CatalogoScreen() {
   const router = useRouter();

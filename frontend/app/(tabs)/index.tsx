@@ -13,12 +13,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useAuthStore } from '../store/useAuthStore';
-import { listSessions, listMapSessions, type SessionListItem } from '../lib/chatRepository';
-import { resumoDoMapa, type ResumoMapa } from '../lib/mapPins';
-import { ItemConversa } from '../components/ItemConversa';
-import { ConnectionIndicator } from '../components/ConnectionIndicator';
-import { theme } from '../config/theme';
+import { useAuthStore } from '../../store/useAuthStore';
+import { listSessions, listMapSessions, type SessionListItem } from '../../lib/chatRepository';
+import { resumoDoMapa, type ResumoMapa } from '../../lib/mapPins';
+import { ItemConversa } from '../../components/ItemConversa';
+import { ConnectionIndicator } from '../../components/ConnectionIndicator';
+import { theme } from '../../config/theme';
 
 const CONVERSAS_NA_HOME = 3;
 

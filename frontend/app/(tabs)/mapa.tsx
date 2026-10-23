@@ -8,10 +8,10 @@ import { View, Text, Image, TouchableOpacity, StyleSheet, ActivityIndicator } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import MapView, { Marker } from 'react-native-maps';
-import { listMapSessions } from '../lib/chatRepository';
-import { montarPinos, regiaoInicial, estadoDoMapa, type PinoMapa, type RegiaoMapa } from '../lib/mapPins';
-import { useNetworkStore } from '../store/useNetworkStore';
-import { theme } from '../config/theme';
+import { listMapSessions } from '../../lib/chatRepository';
+import { montarPinos, regiaoInicial, estadoDoMapa, type PinoMapa, type RegiaoMapa } from '../../lib/mapPins';
+import { useNetworkStore } from '../../store/useNetworkStore';
+import { theme } from '../../config/theme';
 
 export default function MapaScreen() {
   const router = useRouter();

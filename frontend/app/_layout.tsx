@@ -123,12 +123,9 @@ export default function RootLayout() {
           animation: 'fade',
         }}
       >
-        <Stack.Screen name="index" />
+        <Stack.Screen name="(tabs)" />
         <Stack.Screen name="camera" />
-        <Stack.Screen name="chat/index" />
         <Stack.Screen name="chat/[sessionId]" />
-        <Stack.Screen name="mapa" />
-        <Stack.Screen name="catalogo" />
         <Stack.Screen name="(auth)/login" />
         <Stack.Screen name="(auth)/register" />
       </Stack>
