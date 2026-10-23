@@ -38,8 +38,8 @@ export default function HomeScreen() {
       setConversas(recentes);
       setMapa(resumoDoMapa(linhasDoMapa));
     } catch (erro) {
-      // Resumo vazio é melhor que tela quebrada: os botões continuam levando
-      // o produtor à câmera e às conversas.
+      // Resumo vazio é melhor que tela quebrada: a barra e os blocos continuam
+      // levando o produtor à câmera, às conversas e ao mapa.
       console.warn('[Home] Falha ao carregar o resumo.', erro);
     } finally {
       setCarregando(false);

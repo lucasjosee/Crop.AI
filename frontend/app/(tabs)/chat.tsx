@@ -1,4 +1,4 @@
-// frontend/app/(tabs)/index.tsx
+// frontend/app/(tabs)/chat.tsx
 // A lista das conversas. Até o sub-projeto 5 esta rota criava uma sessão nova
 // a cada mount e redirecionava — por isso o app acumulava conversas vazias.
 // Agora a conversa livre nasce na primeira mensagem, via o sentinela /chat/novo.
