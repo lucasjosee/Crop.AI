@@ -105,17 +105,40 @@ export function resumoDoMapa(linhas: MapSession[]): ResumoMapa {
   return { total: linhas.length, problemas: linhas.length - saudaveis, saudaveis };
 }
 
-export type EstadoMapa = 'CARREGANDO' | 'SEM_REDE' | 'MAPA';
+export type EstadoMapa = 'SEM_CHAVE' | 'CARREGANDO' | 'SEM_REDE' | 'MAPA';
 
 /**
- * Três estados, e não dois.
+ * Se o build tem o que o mapa nativo precisa para montar.
+ *
+ * No Android, o Google Maps exige a chave no manifesto, e sem ela o `MapView`
+ * derruba o app em vez de desenhar em branco. A chave não chega ao JS (a config
+ * embutida no app é a pública, sem `android.config`), então `app.config.ts`
+ * grava a bandeira `mapaAndroidConfigurado` em `extra`. Só `true` conta: um
+ * build anterior ao `app.config.ts` não tem a bandeira, e na dúvida o mapa não
+ * monta. No iOS, sem `provider`, o mapa é o Apple Maps, que não pede chave.
+ */
+export function mapaNativoConfigurado(
+  plataforma: string,
+  extra: { readonly [chave: string]: unknown } | undefined
+): boolean {
+  if (plataforma === 'ios') return true;
+  if (plataforma === 'android') return extra?.mapaAndroidConfigurado === true;
+  return false;
+}
+
+/**
+ * Quatro estados, e não três.
  *
  * `PROBING` é o estado inicial de até ~7 s (2 tentativas de 2 s mais 3 s de
  * debounce, por `config/network.ts`). Nele o app **não sabe** se há rede;
  * tratá-lo como `FIELD` mostraria "o mapa precisa de conexão" a quem tem
  * internet, trocando um erro por outro.
+ *
+ * `SEM_CHAVE` vem antes da rede: sem a chave o mapa nunca monta, então não há
+ * por que esperar a conexão.
  */
-export function estadoDoMapa(modo: ConnectionMode): EstadoMapa {
+export function estadoDoMapa(modo: ConnectionMode, mapaConfigurado: boolean): EstadoMapa {
+  if (!mapaConfigurado) return 'SEM_CHAVE';
   if (modo === 'PROBING') return 'CARREGANDO';
   if (modo === 'FIELD') return 'SEM_REDE';
   return 'MAPA';

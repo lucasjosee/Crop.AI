@@ -2,16 +2,28 @@
 // O mapa das análises. É a única tela do app que exige conexão: os tiles vêm
 // da rede, e embutir mapa offline custaria centenas de MB num app que já
 // carrega 1,5 GB de modelo. Em modo FIELD ela diz isso em vez de mostrar um
-// quadrado cinza.
+// quadrado cinza. Sem a chave do Google no Android, ela avisa em vez de montar
+// o MapView, que derrubaria o app.
 import { useCallback, useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
+import Constants from 'expo-constants';
 import MapView, { Marker } from 'react-native-maps';
 import { listMapSessions } from '../../lib/chatRepository';
-import { montarPinos, regiaoInicial, estadoDoMapa, type PinoMapa, type RegiaoMapa } from '../../lib/mapPins';
+import {
+  montarPinos,
+  regiaoInicial,
+  estadoDoMapa,
+  mapaNativoConfigurado,
+  type PinoMapa,
+  type RegiaoMapa,
+} from '../../lib/mapPins';
 import { useNetworkStore } from '../../store/useNetworkStore';
 import { theme } from '../../config/theme';
+
+// A bandeira é do build e não muda com o app aberto.
+const MAPA_CONFIGURADO = mapaNativoConfigurado(Platform.OS, Constants.expoConfig?.extra);
 
 export default function MapaScreen() {
   const router = useRouter();
@@ -21,7 +33,7 @@ export default function MapaScreen() {
   const [carregando, setCarregando] = useState(true);
   const [selecionado, setSelecionado] = useState<PinoMapa | null>(null);
 
-  const estado = estadoDoMapa(connectionMode);
+  const estado = estadoDoMapa(connectionMode, MAPA_CONFIGURADO);
 
   const recarregar = useCallback(async () => {
     try {
@@ -40,7 +52,7 @@ export default function MapaScreen() {
   useFocusEffect(
     useCallback(() => {
       // Não gasta leitura de banco quando a tela nem vai desenhar o mapa.
-      if (estado === 'SEM_REDE') {
+      if (estado === 'SEM_REDE' || estado === 'SEM_CHAVE') {
         setCarregando(false);
         return;
       }
@@ -53,6 +65,33 @@ export default function MapaScreen() {
       <Text style={styles.headerTitle}>Mapa de análises</Text>
     </View>
   );
+
+  if (estado === 'SEM_CHAVE') {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        {cabecalho}
+        <View style={styles.centro}>
+          <Text style={styles.avisoTitulo}>O mapa não está disponível nesta versão</Text>
+          <Text style={styles.avisoTexto}>
+            As análises continuam salvas no aparelho e aparecem nas conversas.
+          </Text>
+          {__DEV__ ? (
+            <Text style={styles.avisoDev}>
+              Build sem GOOGLE_MAPS_ANDROID_API_KEY. Ver operacao/deploy.md.
+            </Text>
+          ) : null}
+          <TouchableOpacity
+            style={styles.botaoConversas}
+            onPress={() => router.push('/chat')}
+            accessibilityRole="button"
+            accessibilityLabel="Ver conversas"
+          >
+            <Text style={styles.botaoConversasTexto}>Ver conversas</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (estado === 'CARREGANDO') {
     return (
@@ -179,6 +218,12 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     fontSize: theme.typography.fontSize.sm,
     textAlign: 'center',
+  },
+  avisoDev: {
+    color: theme.colors.textSecondary,
+    fontSize: theme.typography.fontSize.sm,
+    textAlign: 'center',
+    marginTop: theme.spacing.md,
   },
   avisoCarregando: {
     color: theme.colors.textSecondary,

@@ -9,6 +9,7 @@ vi.mock('./diagnosisDetails', () => ({
 import {
   classificarPino,
   estadoDoMapa,
+  mapaNativoConfigurado,
   montarPinos,
   regiaoInicial,
   resumoDoMapa,
@@ -169,18 +170,41 @@ describe('resumoDoMapa', () => {
 
 describe('estadoDoMapa', () => {
   it('PROBING carrega: o app ainda não sabe se há rede', () => {
-    expect(estadoDoMapa('PROBING')).toBe('CARREGANDO');
+    expect(estadoDoMapa('PROBING', true)).toBe('CARREGANDO');
   });
 
   it('FIELD avisa que o mapa precisa de conexão', () => {
-    expect(estadoDoMapa('FIELD')).toBe('SEM_REDE');
+    expect(estadoDoMapa('FIELD', true)).toBe('SEM_REDE');
   });
 
   it('ONLINE desenha o mapa', () => {
-    expect(estadoDoMapa('ONLINE')).toBe('MAPA');
+    expect(estadoDoMapa('ONLINE', true)).toBe('MAPA');
   });
 
   it('DEGRADED desenha o mapa: lento ainda é conectado', () => {
-    expect(estadoDoMapa('DEGRADED')).toBe('MAPA');
+    expect(estadoDoMapa('DEGRADED', true)).toBe('MAPA');
+  });
+
+  it('sem o mapa configurado, nenhum modo de rede o monta', () => {
+    for (const modo of ['PROBING', 'FIELD', 'ONLINE', 'DEGRADED'] as const) {
+      expect(estadoDoMapa(modo, false)).toBe('SEM_CHAVE');
+    }
+  });
+});
+
+describe('mapaNativoConfigurado', () => {
+  it('iOS dá true mesmo sem extra: o Apple Maps não pede chave', () => {
+    expect(mapaNativoConfigurado('ios', undefined)).toBe(true);
+  });
+
+  it('Android dá true só com a bandeira booleana ligada', () => {
+    expect(mapaNativoConfigurado('android', { mapaAndroidConfigurado: true })).toBe(true);
+  });
+
+  it('Android sem a bandeira, e qualquer outra plataforma, dá false', () => {
+    expect(mapaNativoConfigurado('android', undefined)).toBe(false);
+    expect(mapaNativoConfigurado('android', {})).toBe(false);
+    expect(mapaNativoConfigurado('android', { mapaAndroidConfigurado: 'true' })).toBe(false);
+    expect(mapaNativoConfigurado('web', { mapaAndroidConfigurado: true })).toBe(false);
   });
 });
