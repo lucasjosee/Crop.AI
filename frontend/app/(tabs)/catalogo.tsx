@@ -1,4 +1,4 @@
-// frontend/app/catalogo.tsx
+// frontend/app/(tabs)/catalogo.tsx
 // A enciclopédia de doenças. Até o sub-projeto 7 ela era uma aba da Home; virou
 // tela própria quando a Home passou a ser um resumo de dois blocos.
 // Funciona offline: o catálogo é semeado no SQLite e sincronizado por ETag.
@@ -6,15 +6,14 @@ import { useCallback, useState } from 'react';
 import { View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
-import { listCatalogDiseases, type CatalogDisease } from '../lib/diagnosisDetails';
-import { filtrarDoencas, rotuloSeveridade, tipoSeveridade } from '../lib/catalogo';
-import { Card } from '../components/Card';
-import { Badge } from '../components/Badge';
-import { theme } from '../config/theme';
+import { useFocusEffect } from 'expo-router';
+import { listCatalogDiseases, type CatalogDisease } from '../../lib/diagnosisDetails';
+import { filtrarDoencas, rotuloSeveridade, tipoSeveridade } from '../../lib/catalogo';
+import { Card } from '../../components/Card';
+import { Badge } from '../../components/Badge';
+import { theme } from '../../config/theme';
 
 export default function CatalogoScreen() {
-  const router = useRouter();
   const [doencas, setDoencas] = useState<CatalogDisease[]>([]);
   const [busca, setBusca] = useState('');
   const [carregando, setCarregando] = useState(true);
@@ -61,16 +60,8 @@ export default function CatalogoScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          accessibilityRole="button"
-          accessibilityLabel="Voltar"
-        >
-          <Text style={styles.backButton}>‹</Text>
-        </TouchableOpacity>
         <Text style={styles.headerTitle}>Doenças da soja</Text>
       </View>
 
@@ -132,7 +123,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
-  backButton: { color: theme.colors.primary, fontSize: 24, marginRight: 12 },
   headerTitle: {
     flex: 1,
     color: theme.colors.text,

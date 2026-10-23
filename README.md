@@ -17,8 +17,8 @@ pronto para publicação nas lojas.**
 |---|---|
 | Culturas | Soja |
 | Classes de visão computacional | 17 (16 problemas + Saudável) |
-| Testes | 84 backend, 272 frontend |
-| Execuções | Uma, em emulador (27/09/2026). Nunca em aparelho real |
+| Testes | 84 backend, 276 frontend |
+| Execuções | Duas, em emulador (27/09 e 22/10/2026). Nunca em aparelho real |
 
 ## Stack
 
@@ -56,7 +56,7 @@ nativos e **não roda no Expo Go**.
 
 ```bash
 cp .env.example .env          # preencha JWT_SECRET e LLM_API_KEY
-docker compose up -d db minio minio-init
+docker compose up -d db minio minio-init   # ver a nota sobre o MinIO abaixo
 
 cd backend
 npm ci
@@ -78,6 +78,17 @@ O `adb reverse` faz `localhost` servir ao emulador e ao backend ao mesmo tempo;
 sem ele, a segunda opinião não consegue baixar a imagem do MinIO. Aparelho
 físico pela rede e as demais variáveis estão no guia de ambiente local da
 documentação.
+
+**O MinIO não sobe num clone novo.** As imagens `minio/minio` e `minio/mc` não
+existem mais no Docker Hub (conferido em 22/10/2026). Sem MinIO, o banco e o backend sobem
+(`docker compose up -d db`), mas o upload de foto e a segunda opinião não
+funcionam em dev.
+
+**O mapa no Android precisa da chave do Google Maps**, em
+`GOOGLE_MAPS_ANDROID_API_KEY` no `frontend/.env.local`, que o git ignora. Sem
+ela, a aba Mapa mostra um aviso em vez do mapa. Ao pôr ou trocar a chave num
+`android/` já gerado, rode `npx expo prebuild --platform android` antes do
+build.
 
 Verifique com:
 

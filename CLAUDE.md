@@ -4,13 +4,15 @@ App **offline-first** que identifica doenças em folhas de soja pela câmera do 
 
 Iniciado em 26/05/2026. Autor único. Reescrito em **20/10/2026** a partir de leitura integral da documentação e conferência contra o código. **Onde doc e código discordam, este arquivo segue o código** e corrige o doc (ver "Quando a documentação diverge do código").
 
-## Estado, em 20/10/2026
+## Estado, em 22/10/2026
 
 - A reformulação em sete sub-projetos — *"a conversa é a unidade, e o diagnóstico é a primeira mensagem dela"* — está **completa e inteira em `main`**. O PR #11 (sub-projeto 7 mais os consertos da primeira execução) foi mergeado em **06/10/2026**.
 - A branch local `feat/tela-principal` já está toda em `origin/main`, e o `main` local está atrás do remoto. **Trabalho novo sai de `origin/main` atualizado**, nunca dessa branch.
-- Suítes: frontend **272 testes / 27 arquivos**, backend **84 / 13**. Typecheck limpo nos dois.
-- **O app rodou uma única vez, em emulador (27/09). Nunca em aparelho real.** Esse é o passo de maior retorno, à frente de qualquer código.
-- Próximo trabalho desenhado: **Home v2** (`especificacoes/2026-09-27-home-v2-design.md`), com barra de navegação real, prévia do mapa no topo e Analisar no centro. Está **bloqueada** pela chave do Google Maps para Android.
+- Suítes: frontend **276 testes / 27 arquivos** (272 em `main` até o merge da Home v2, parte 1), backend **84 / 13**. Typecheck limpo nos dois.
+- **O app rodou duas vezes, ambas em emulador (27/09 e 22/10). Nunca em aparelho real.** Esse é o passo de maior retorno, à frente de qualquer código.
+- **Home v2** (`especificacoes/2026-09-27-home-v2-design.md`) foi dividida em dois PRs:
+  - **Parte 1**, a barra de navegação com o Analisar no centro, está no PR #13 (branch `feat/home-v2-navegacao`). Ela também passou a tratar a falta da chave do Google Maps: a aba Mapa mostra um aviso em vez de fechar o app.
+  - **Parte 2**, a prévia do mapa no topo da Home, continua **bloqueada** pela chave do Google Maps para Android.
 
 ## Onde está o quê
 
@@ -37,7 +39,7 @@ Conferida contra o código e corrigida em **20/10/2026**.
 | `historico/execucoes/` | Ledgers: cada ruling tomado durante a execução e o custo se errado. **Melhor fonte de "por que está assim"** |
 | `historico/reviews/2026-08-26-achados-baseline.md` | 20 achados de review pré-reformulação, todos resolvidos em 09/09 |
 | `operacao/ambiente-local.md` | Do clone ao app no emulador, com `adb reverse` e a cópia do SLM |
-| `operacao/homologacao-campo.md` | A seção da **primeira execução** (27/09) é a mais valiosa do repositório de docs; o resto é esqueleto |
+| `operacao/homologacao-campo.md` | As seções das duas execuções em emulador, a **primeira** (27/09) e a da **Home v2** (22/10), são as mais valiosas do repositório de docs; o resto é esqueleto |
 | `produto/visao.md`, `operacao/deploy.md`, `catalogo/curadoria.md` | **Esqueletos**: só títulos e comentários, porque o conteúdo depende do autor. O `deploy.md` tem um único item real, a chave do Maps |
 | `historico/vault-original/` | Vault Obsidian de antes da reformulação. Arquivo morto; os RF/RNF que só existiam lá estão hoje em `produto/requisitos.md` |
 
@@ -144,17 +146,20 @@ Health check com timeout de 2 s, a cada 15 s. Latência acima de 1000 ms dá `DE
 
 ### Frontend
 
-**`app/`** — oito rotas, as oito registradas no `Stack` de `_layout.tsx`:
+**`app/`** — a raiz é um `Stack` (`_layout.tsx`). As quatro telas da barra ficam no grupo `(tabs)/`, sob um `Tabs` importado de `expo-router/js-tabs` (`(tabs)/_layout.tsx`). O `Tabs` de `expo-router` é obsoleto no SDK 56, e as abas nativas são instáveis até o 57. O grupo não entra na URL, então as rotas são as de antes da barra:
 
-| Rota | O que é |
-|---|---|
-| `index` | Home: três conversas recentes, contagem do mapa e o botão Analisar |
-| `camera` | Visor, confirmação e o **simulador de diagnóstico** sob `__DEV__` (ícone `bug-outline`) |
-| `chat/index` | Lista de conversas, com renomear e apagar por toque longo |
-| `chat/[sessionId]` | A conversa. `novo` (`SESSAO_NOVA`) é o sentinela da conversa livre, que **nasce na primeira mensagem** |
-| `mapa` | Mapa de análises. **Única tela que exige rede** |
-| `catalogo` | Enciclopédia de doenças, offline |
-| `(auth)/login`, `(auth)/register` | |
+| Arquivo | URL | O que é |
+|---|---|---|
+| `(tabs)/index` | `/` | Home: três conversas recentes e a contagem do mapa |
+| `(tabs)/chat` | `/chat` | Lista de conversas, com renomear e apagar por toque longo |
+| `(tabs)/analisar` | — | Não é tela. Hospeda o botão central da barra, que faz `router.push('/camera')` e nunca deixa a aba ativa. A rota só faz `<Redirect href="/camera" />` |
+| `(tabs)/mapa` | `/mapa` | Mapa de análises. **Única tela que exige rede.** No Android sem a chave do Google, mostra um aviso (`SEM_CHAVE`) em vez do mapa |
+| `(tabs)/catalogo` | `/catalogo` | Enciclopédia de doenças, offline |
+| `camera` | `/camera` | Visor, confirmação e o **simulador de diagnóstico** sob `__DEV__` (ícone `bug-outline`). Fechar volta para quem a abriu |
+| `chat/[sessionId]` | `/chat/:id` | A conversa. `novo` (`SESSAO_NOVA`) é o sentinela da conversa livre, que **nasce na primeira mensagem** |
+| `(auth)/login`, `(auth)/register` | | |
+
+Câmera, conversa e autenticação ficam no `Stack` da raiz e abrem **por cima** da barra, sem ela. Não esconda a barra à mão. Um `router.push` para uma aba vira troca de aba (`expo-router/build/global-state/getNavigationAction.js`). O voltar do Android, numa aba, leva ao Início. O `push` da câmera para a conversa é de propósito: voltar da conversa reencontra o visor.
 
 `_layout.tsx` faz o boot (`initDatabase` → `loadStoredSession` → `initNetworkSensing`), o guarda de autenticação e o auto-sync.
 
@@ -173,7 +178,7 @@ Health check com timeout de 2 s, a cada 15 s. Latência acima de 1000 ms dá `DE
 | `inference.ts` | TFLite: 300×300 RGB normalizado em [0,1] → 17 probabilidades → `LABELS_LIST`/`LABELS_MAP` |
 | `slmChatService.ts` | `llama.rn`: carrega, conversa e descarrega |
 | `engine/` | `types`, `localEngine`, `cloudEngine` (SSE nativo), `router`, `index` (o singleton) |
-| `mapPins.ts`, `catalogo.ts`, `sessionListFormat.ts` | Funções puras das telas: classificar pino, `resumoDoMapa`, `estadoDoMapa`, filtro e severidade, prévia e data relativa |
+| `mapPins.ts`, `catalogo.ts`, `sessionListFormat.ts` | Funções puras das telas: classificar pino, `resumoDoMapa`, `estadoDoMapa` (com `SEM_CHAVE` antes da rede), `mapaNativoConfigurado`, filtro e severidade, prévia e data relativa |
 | `api.ts` | axios com renovação de token por mutex |
 | `imageHelper.ts`, `secureStorage.ts`, `diagnosisFeedbackService.ts`, `performance*.ts`, `syncContracts.ts` | Apoio |
 
@@ -258,7 +263,7 @@ A origem de todas as falhas caras deste projeto. **Antes de confiar em qualquer 
 | `react-native-vision-camera` | `app/camera.tsx` | Tipada | A câmera abriu no emulador. **O obturador nunca capturou uma foto real** |
 | `op-sqlite` + SQLCipher | `db/sqlite.ts` | **`any`** (`nativeDb`, `require`) | Sim: boot e nove migrações no emulador |
 | `llama.rn` | `lib/slmChatService.ts` | Tipada (`LlamaContext`, `require` tipado) desde 20/10 | **Nunca** — o `.gguf` nunca esteve num aparelho |
-| `react-native-maps` | `app/mapa.tsx` | Tipada | Sem chave Android, desenha em branco |
+| `react-native-maps` | `app/(tabs)/mapa.tsx` | Tipada | No Android **sem a chave, o `MapView` derruba o app** (`IllegalStateException: API key not found`), e não desenha em branco como os docs diziam até 22/10. Desde 22/10 a tela só monta o mapa com `extra.mapaAndroidConfigurado`. **Com chave, nunca executou** |
 
 **`llama.rn` tinha a forma da quarta ocorrência**: `any` mais `require` sobre a fronteira, sem nunca ter executado. Em 20/10 passou a ser tipado pela tipagem instalada da 0.12.4 (`LlamaContext | null` e `require('llama.rn') as typeof import('llama.rn')`, que mantém o carregamento preguiçoso), e o typecheck agora confere `initLlama`, `completion`, `stopCompletion` e `release`. **Tipado não é executado**: a primeira execução com o `.gguf` continua sendo o teste de verdade. Resta `op-sqlite` como `any` (`nativeDb`), que já executou nove migrações no emulador.
 
@@ -277,7 +282,9 @@ A terceira é na mesma lib da primeira: consertar o `loadModel` fez o carregamen
 
 **`catch` genérico engolindo a causa.** Até 09/2026, a inferência chamava uma função inexistente e dependia de um pacote não instalado, e um `catch` escondia os dois. Num catch sobre fronteira nativa, **sempre logar o erro**.
 
-**Barras de navegação falsas.** Existiram na Home e na câmera: três `TouchableOpacity` fazendo `router.push`, com o item ativo escrito à mão, mentindo sobre onde o usuário estava. Foram apagadas no sub-projeto 7. A Home v2 vai construir um `Tabs` de verdade, que é outra coisa.
+**Barras de navegação falsas.** Existiram na Home e na câmera: três `TouchableOpacity` fazendo `router.push`, com o item ativo escrito à mão, mentindo sobre onde o usuário estava. Foram apagadas no sub-projeto 7. A Home v2 construiu um `Tabs` de verdade em `app/(tabs)/_layout.tsx`, que é outra coisa.
+
+**Afirmar como uma falha nativa se comporta sem tê-la visto.** De 14/09 a 22/10, cinco documentos diziam que, sem a chave do Google, o mapa "abria em branco". O logcat de 27/09 já mostrava o app caindo com `API key not found`, três vezes. A frase veio da intuição de quem escreveu, não de uma execução, e por isso ninguém a conferiu. **O que uma biblioteca nativa faz quando falha se escreve a partir do log**, não por dedução.
 
 **Configuração duplicada no `.env`.** Duas linhas `S3_ENDPOINT`, e a segunda vencia: o presigned apontava para dentro do emulador. Custou uma investigação.
 
@@ -288,12 +295,12 @@ A terceira é na mesma lib da primeira: consertar o `loadModel` fez o carregamen
 ```bash
 # infra + backend — o .env fica na RAIZ (env.ts resolve ../../../.env)
 cp .env.example .env              # preencher JWT_SECRET (32+ chars em produção) e LLM_API_KEY
-docker compose up -d db minio minio-init
+docker compose up -d db minio minio-init   # minio/minio e minio/mc sumiram do Docker Hub (22/10): hoje só `db` sobe
 cd backend && npm ci && npm run db:migrate && npm run db:seed && npm run dev
 curl http://localhost:3000/api/v1/health
 
 # testes e typecheck — cada pacote no seu diretório; `lint` é alias de typecheck
-cd frontend && npm test && npm run typecheck   # 272 / 27, sem dependência externa
+cd frontend && npm test && npm run typecheck   # 276 / 27, sem dependência externa
 cd backend  && npm test && npm run typecheck   # 84 / 13, exige o Postgres do compose no ar
 ```
 
@@ -313,6 +320,13 @@ cd frontend && EXPO_PUBLIC_API_URL=http://localhost:3000 npx expo run:android
 
 No emulador a câmera é uma cena 3D falsa: use o **simulador de diagnóstico** (ícone de inseto na câmera, só sob `__DEV__`), que roda o pipeline real sem folha. Sem posição injetada no emulador, o GPS falha, e o diagnóstico é gravado sem posição: não vira pino no mapa.
 
+**Chave do Google Maps:** vai em `GOOGLE_MAPS_ANDROID_API_KEY`, no `frontend/.env.local`, que o git ignora. O `app.config.ts` a lê, e o `@expo/env` carrega o arquivo tanto no prebuild quanto no build. O manifesto só muda no **prebuild**, e `expo run:android` só faz prebuild quando `android/` não existe. Por isso, ao pôr ou trocar a chave num `android/` já gerado, rode `npx expo prebuild --platform android`. Sem isso, a bandeira (regerada a cada build) diz que há chave, o manifesto continua sem ela, e o crash volta.
+
+**Três armadilhas de ambiente achadas em 22/10:**
+- `expo run:android` **não compila nesta máquina**. O `android/` e cerca de 30 `node_modules/*/android/{build,.cxx}` guardam o caminho antigo do repositório (`…/App de Diagnostico de plantas/…`). Resolver exige apagar esses diretórios e recompilar todo o C++. Enquanto nenhuma dependência nativa mudar, dá para usar o APK já instalado com `npx expo start`.
+- **Sem watchman, o Metro não viu mudança de arquivo** feita depois de iniciado, e serviu a versão velha da tela. Depois de mudar código, reinicie com `npx expo start --clear` antes de concluir qualquer coisa.
+- O toast do LogBox ("Open debugger to view warnings") **cobre a barra de abas** em dev e engole o toque. Feche-o pelo X.
+
 ### Modelo SLM (cópia manual)
 
 O app procura **exatamente** `/data/user/0/br.com.cropai/files/models/gemma-2b-it-q4_k_m.gguf` (`SLM_MODEL_FILENAME`). O comando que `ambiente-local.md` trazia até 20/10 falhava duas vezes: empurrava para `/sdcard/Android/data/...`, que é outro diretório, e mantinha o nome do Hugging Face (`gemma-2-2b-it-...`), que é outro arquivo. O caminho que deve funcionar num build debuggable, **ainda não testado**:
@@ -327,7 +341,8 @@ adb shell run-as br.com.cropai cp /data/local/tmp/gemma-2-2b-it-Q4_K_M.gguf file
 
 | Bloqueio | Efeito |
 |---|---|
-| **Chave do Google Maps para Android não provisionada** | `/mapa` abre **em branco** no Android; o iOS cai no Apple Maps e funciona. Falha silenciosa: o build passa. Vai em `app.json > android.config.googleMaps.apiKey`, **nunca como placeholder**. Bloqueia a Home v2 |
+| **Chave do Google Maps para Android não provisionada** | A aba Mapa mostra "O mapa não está disponível nesta versão" no Android. Até 22/10 **derrubava o app**. O iOS cai no Apple Maps e funciona. A chave vem de `GOOGLE_MAPS_ANDROID_API_KEY` pelo `app.config.ts`, **nunca** literal no `app.json` ou no `app.config.ts` (o repositório é público) e nunca como placeholder. A de produção é outra chave, presa ao SHA-1 do Play App Signing. Bloqueia a parte 2 da Home v2 |
+| **MinIO fora do Docker Hub** | `minio/minio` e `minio/mc` não existem mais (22/10), então o compose não sobe o S3 de dev. Sem ele, o upload e a segunda opinião não funcionam localmente. Candidatos a substituto ainda não avaliados |
 | **ADR 0001 em aberto**: o `.gguf` não é distribuído | O chat offline não responde. Depende de escolher Gemma 2 2B ou Llama 3.2 3B, o que exige benchmark em hardware alvo, nunca feito |
 | **Sem sync manual** | O sub-projeto 7 removeu o único botão. O automático continua, mas **nada re-tenta um item `FAILED`** |
 | **Nada provisionado para produção** | Railway, Neon e o bucket S3 real nunca foram criados. Só existem o `Dockerfile` e o CI |
@@ -337,6 +352,10 @@ adb shell run-as br.com.cropai cp /data/local/tmp/gemma-2-2b-it-Q4_K_M.gguf file
 **Achados em 20/10/2026, ao escrever este arquivo.** Quatro foram corrigidos no mesmo dia (spec `especificacoes/2026-10-20-consertos-da-conferencia-design.md`): a limpeza de 30 dias saiu, GPS ausente passou a gravar posição nula, o `S3_ENDPOINT` do emulador virou `localhost` com `adb reverse`, e o `llama.rn` foi tipado. Fica um:
 
 1. **O auto-sync dispara também em `DEGRADED → ONLINE`.** Com latência perto de 1000 ms, a oscilação gera syncs em série (no emulador, dois em 5 s), e cada um varre as segundas opiniões, que são pagas.
+
+**Achado em 22/10/2026, na segunda execução:**
+
+2. **Os dados locais não são separados por usuário.** O SQLite não tem `user_id`, e o logout não apaga nada. No emulador, uma conta nova viu as conversas de 27/09 da conta anterior. O sync também tentou subir a fila antiga com o token da conta nova, e o servidor decide o dono pelo JWT, então o dado de um produtor iria para a conta de outro. Num aparelho compartilhado, é vazamento. Ainda não tem spec.
 
 **Herdadas das specs e sem dono:**
 

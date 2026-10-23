@@ -1,4 +1,4 @@
-// frontend/app/index.tsx
+// frontend/app/(tabs)/index.tsx
 // A Home é o resumo do app: blocos de prévia empilhados, e o produtor decide
 // dali para onde ir. Até o sub-projeto 7 esta era a única tela que a
 // reformulação não tinha tocado — tinha duas abas, busca e uma barra inferior
@@ -13,12 +13,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useAuthStore } from '../store/useAuthStore';
-import { listSessions, listMapSessions, type SessionListItem } from '../lib/chatRepository';
-import { resumoDoMapa, type ResumoMapa } from '../lib/mapPins';
-import { ItemConversa } from '../components/ItemConversa';
-import { ConnectionIndicator } from '../components/ConnectionIndicator';
-import { theme } from '../config/theme';
+import { useAuthStore } from '../../store/useAuthStore';
+import { listSessions, listMapSessions, type SessionListItem } from '../../lib/chatRepository';
+import { resumoDoMapa, type ResumoMapa } from '../../lib/mapPins';
+import { ItemConversa } from '../../components/ItemConversa';
+import { ConnectionIndicator } from '../../components/ConnectionIndicator';
+import { theme } from '../../config/theme';
 
 const CONVERSAS_NA_HOME = 3;
 
@@ -38,8 +38,8 @@ export default function HomeScreen() {
       setConversas(recentes);
       setMapa(resumoDoMapa(linhasDoMapa));
     } catch (erro) {
-      // Resumo vazio é melhor que tela quebrada: os botões continuam levando
-      // o produtor à câmera e às conversas.
+      // Resumo vazio é melhor que tela quebrada: a barra e os blocos continuam
+      // levando o produtor à câmera, às conversas e ao mapa.
       console.warn('[Home] Falha ao carregar o resumo.', erro);
     } finally {
       setCarregando(false);
@@ -64,7 +64,7 @@ export default function HomeScreen() {
   }, [logout]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <View style={styles.headerEsquerda}>
           <Ionicons name="leaf" size={26} color={theme.colors.primary} />
@@ -72,14 +72,6 @@ export default function HomeScreen() {
         </View>
         <View style={styles.headerDireita}>
           <ConnectionIndicator />
-          <TouchableOpacity
-            onPress={() => router.push('/catalogo')}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            accessibilityRole="button"
-            accessibilityLabel="Abrir o catálogo de doenças"
-          >
-            <Ionicons name="book-outline" size={24} color={theme.colors.textSecondary} />
-          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => void sair()}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -171,16 +163,6 @@ export default function HomeScreen() {
             </>
           )}
         </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.analisar}
-          onPress={() => router.push('/camera')}
-          accessibilityRole="button"
-          accessibilityLabel="Analisar uma folha com a câmera"
-        >
-          <Ionicons name="camera" size={22} color={theme.colors.surface} />
-          <Text style={styles.analisarTexto}>Analisar</Text>
-        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -246,20 +228,5 @@ const styles = StyleSheet.create({
   mapaContagemTexto: {
     color: theme.colors.textSecondary,
     fontSize: theme.typography.fontSize.sm,
-  },
-  analisar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: theme.spacing.sm,
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.borderRadius.round,
-    paddingVertical: theme.spacing.md,
-    marginTop: theme.spacing.md,
-  },
-  analisarTexto: {
-    color: theme.colors.surface,
-    fontSize: theme.typography.fontSize.md,
-    fontWeight: '600',
   },
 });
