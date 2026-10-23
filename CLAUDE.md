@@ -11,7 +11,7 @@ Iniciado em 26/05/2026. Autor único. Reescrito em **20/10/2026** a partir de le
 - Suítes: frontend **276 testes / 27 arquivos** (272 em `main` até o merge da Home v2, parte 1), backend **84 / 13**. Typecheck limpo nos dois.
 - **O app rodou duas vezes, ambas em emulador (27/09 e 22/10). Nunca em aparelho real.** Esse é o passo de maior retorno, à frente de qualquer código.
 - **Home v2** (`especificacoes/2026-09-27-home-v2-design.md`) foi dividida em dois PRs:
-  - **Parte 1**, a barra de navegação com o Analisar no centro, está na branch `feat/home-v2-navegacao`, com PR aberto. Ela também passou a tratar a falta da chave do Google Maps: a aba Mapa mostra um aviso em vez de fechar o app.
+  - **Parte 1**, a barra de navegação com o Analisar no centro, está no PR #13 (branch `feat/home-v2-navegacao`). Ela também passou a tratar a falta da chave do Google Maps: a aba Mapa mostra um aviso em vez de fechar o app.
   - **Parte 2**, a prévia do mapa no topo da Home, continua **bloqueada** pela chave do Google Maps para Android.
 
 ## Onde está o quê
