@@ -35,8 +35,12 @@ export const chatController = {
     });
 
     let aborted = false;
-    request.raw.on('close', () => {
-      aborted = true;
+    // A desconexão vem do close da resposta, e só vale se ela ainda não
+    // terminou. O close do IncomingMessage (request.raw) não serve: no Node >= 16
+    // ele sai quando o corpo termina de ser lido, com o cliente conectado, e
+    // descartava a resposta inteira sem nem fechar o stream.
+    reply.raw.on('close', () => {
+      if (!reply.raw.writableFinished) aborted = true;
     });
 
     let tokensUsed = 0;
