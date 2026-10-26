@@ -91,8 +91,8 @@ export default function CameraScreen() {
       const diseaseName = await resolveDiseaseName(inference.diseaseId);
       setCaptura({ uri, inference, diseaseName });
       setEtapa('CONFIRMACAO');
-    } catch {
-      console.error('[Camera] Falha ao rodar a inferência local.');
+    } catch (err) {
+      console.error('[Camera] Falha ao rodar a inferência local.', err);
       Toast.show({
         type: 'error',
         text1: 'Erro de diagnóstico',

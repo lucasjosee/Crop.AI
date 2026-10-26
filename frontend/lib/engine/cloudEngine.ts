@@ -74,9 +74,10 @@ export class CloudEngine implements ConversationEngine {
     let imageS3Key: string | undefined;
     try {
       imageS3Key = await this.resolveImageKey(input.attachment);
-    } catch {
-      callbacks.onError('UNKNOWN');
-      return;
+    } catch (err) {
+      // Sem a foto a conversa ainda vale: a LLM perde a imagem, não a conversa.
+      // O pedido segue com o cv_result e o contexto do catálogo.
+      console.warn('[CloudEngine] Upload da foto falhou; seguindo sem a imagem.', err);
     }
 
     const body = JSON.stringify({

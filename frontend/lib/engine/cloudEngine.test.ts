@@ -154,6 +154,27 @@ describe('CloudEngine', () => {
     expect(cb.onDone).toHaveBeenCalledWith(expect.objectContaining({ imageS3Key: 'diagnosticos/u/foto.jpg', tokensUsed: 12 }));
   });
 
+  it('upload da foto falho: registra o erro e a conversa segue sem image_s3_key, com cv_result', async () => {
+    const erro = new Error('PUT falhou');
+    mocks.ensureUploaded.mockRejectedValueOnce(erro);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const attachment = { imageUri: 'file:///f.jpg', diagnosticLocalId: 'd1', diseaseName: 'Ferrugem',
+      cvResult: { diseaseId: 'uuid-doenca', confidence: 0.92, inferenceTimeMs: 40, modelUsed: 'tflite' } };
+    const cb = callbacks();
+    engine.respond(baseInput({ attachment }), cb, new AbortController().signal);
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    const body = bodyOf(FakeEventSource.last());
+    expect(body).not.toHaveProperty('image_s3_key');
+    expect(body.cv_result).toEqual({ doenca_id: 'uuid-doenca', doenca_nome: 'Ferrugem', confianca: 0.92, modelo_usado: 'tflite' });
+    expect(warn).toHaveBeenCalledWith(expect.any(String), erro);
+    expect(cb.onError).not.toHaveBeenCalled();
+
+    FakeEventSource.last().emit('message', { data: JSON.stringify({ done: true, tokens_used: 5 }) });
+    expect(cb.onDone).toHaveBeenCalledWith(expect.not.objectContaining({ imageS3Key: expect.anything() }));
+    warn.mockRestore();
+  });
+
   it('repassa chunks e conclui no evento done', async () => {
     const cb = callbacks();
     engine.respond(baseInput(), cb, new AbortController().signal);
