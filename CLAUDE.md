@@ -4,12 +4,13 @@ App **offline-first** que identifica doenças em folhas de soja pela câmera do 
 
 Iniciado em 26/05/2026. Autor único. Reescrito em **20/10/2026** a partir de leitura integral da documentação e conferência contra o código. **Onde doc e código discordam, este arquivo segue o código** e corrige o doc (ver "Quando a documentação diverge do código").
 
-## Estado, em 23/10/2026
+## Estado, em 27/10/2026
 
 - A reformulação em sete sub-projetos — *"a conversa é a unidade, e o diagnóstico é a primeira mensagem dela"* — está **completa e inteira em `main`**. O PR #11 (sub-projeto 7 mais os consertos da primeira execução) foi mergeado em **06/10/2026**.
 - **Trabalho novo sai de `origin/main` atualizado.** O merge é feito no GitHub, então o `main` local fica para trás a cada PR até um `git fetch`.
 - Suítes: frontend **276 testes / 27 arquivos**, backend **84 / 13**. Typecheck limpo nos dois.
-- **O app rodou duas vezes, ambas em emulador (27/09 e 22/10). Nunca em aparelho real.** Esse é o passo de maior retorno, à frente de qualquer código.
+- **O app rodou três vezes, todas em emulador (27/09, 22/10 e 27/10). Nunca em aparelho real.** Esse é o passo de maior retorno, à frente de qualquer código.
+- A execução de 27/10 foi a primeira a falar com o Gemini pelo app, e **nenhuma conversa online funcionava**: o backend travava o stream, e a conversa com foto levava 400 desde sempre. O conserto está no **PR #15** (`fix/chat-stream`). Ela também achou o diagnóstico com **confiança baixa tratado como certo** e toda conversa livre indo aos motores com "Planta saudável". A spec e o plano estão prontos (`especificacoes/2026-10-27-confianca-baixa-design.md`), e a execução sai de `main` **depois** do merge do #15, porque os dois mexem na tela de conversa.
 - **Home v2** (`especificacoes/2026-09-27-home-v2-design.md`) foi dividida em dois PRs:
   - **Parte 1**, a barra de navegação com o Analisar no centro, está em `main` desde **23/10/2026** (PR #13). Ela também passou a tratar a falta da chave do Google Maps: a aba Mapa mostra um aviso em vez de fechar o app.
   - **Parte 2**, a prévia do mapa no topo da Home, continua **bloqueada** pela chave do Google Maps para Android.
@@ -259,8 +260,8 @@ A origem de todas as falhas caras deste projeto. **Antes de confiar em qualquer 
 
 | Biblioteca | Onde | Tipagem | Executou de verdade? |
 |---|---|---|---|
-| `react-native-fast-tflite` | `lib/inference.ts` | Tipada (`TensorflowModel`) desde 06/10 | Carregou no emulador. O `run()` foi corrigido em 06/10, **sem registro de nova execução depois** |
-| `react-native-vision-camera` | `app/camera.tsx` | Tipada | A câmera abriu no emulador. **O obturador nunca capturou uma foto real** |
+| `react-native-fast-tflite` | `lib/inference.ts` | Tipada (`TensorflowModel`) desde 06/10 | **Sim, em 27/10, no emulador**: carregou em ~3 s, e o `run()` corrigido em 06/10 devolveu uma classe mapeada sobre uma foto do obturador. Nunca com uma folha de verdade |
+| `react-native-vision-camera` | `app/camera.tsx` | Tipada | **Sim, em 27/10, no emulador**: o obturador capturou a cena 3D falsa, e a foto foi copiada do cache para `files/`. A prévia saiu **girada 90°** em relação ao visor; conferir em aparelho |
 | `op-sqlite` + SQLCipher | `db/sqlite.ts` | **`any`** (`nativeDb`, `require`) | Sim: boot e nove migrações no emulador |
 | `llama.rn` | `lib/slmChatService.ts` | Tipada (`LlamaContext`, `require` tipado) desde 20/10 | **Nunca** — o `.gguf` nunca esteve num aparelho |
 | `react-native-maps` | `app/(tabs)/mapa.tsx` | Tipada | No Android **sem a chave, o `MapView` derruba o app** (`IllegalStateException: API key not found`), e não desenha em branco como os docs diziam até 22/10. Desde 22/10 a tela só monta o mapa com `extra.mapaAndroidConfigurado`. **Com chave, nunca executou** |
@@ -301,7 +302,15 @@ curl http://localhost:3000/api/v1/health
 
 # testes e typecheck — cada pacote no seu diretório; `lint` é alias de typecheck
 cd frontend && npm test && npm run typecheck   # 276 / 27, sem dependência externa
-cd backend  && npm test && npm run typecheck   # 84 / 13, exige o Postgres do compose no ar
+cd backend  && npm test && npm run typecheck   # 84 / 13, exige um Postgres no ar — ver o aviso abaixo
+```
+
+**Os testes do backend apagam as tabelas do banco que o `DATABASE_URL` aponta**, e sem nada na linha de comando ele vem do `.env` da raiz, que é o **banco de dev**. Rode-os contra um Postgres descartável, com a variável na frente do comando (o `dotenv` não sobrescreve variável já definida):
+
+```bash
+docker run -d --name crop-ai-teste-pg -e POSTGRES_USER=teste -e POSTGRES_PASSWORD=teste -e POSTGRES_DB=cropai_teste -p 127.0.0.1:55432:5432 postgres:16-alpine
+cd backend && export DATABASE_URL=postgres://teste:teste@127.0.0.1:55432/cropai_teste
+npm run db:migrate -- --force && npx vitest run
 ```
 
 O CI (`.github/workflows/ci.yml`) roda lint, typecheck e testes nos dois pacotes, `db:migrate -- --force` e `build` no backend, com Node 22 e Postgres 16.
@@ -318,14 +327,15 @@ cd frontend && EXPO_PUBLIC_API_URL=http://localhost:3000 npx expo run:android
 
 **Use `adb reverse` com `S3_ENDPOINT=http://localhost:9000`, não `10.0.2.2`.** O backend usa **um único** `S3Client` para duas coisas: assinar o presigned, que o aparelho acessa, e baixar a imagem na segunda opinião, que o próprio backend acessa. `10.0.2.2` só existe de dentro do emulador; do host ele sai pelo roteador. Com `10.0.2.2`, o upload funciona, mas **a segunda opinião não tem como baixar a imagem** e cai em `SKIPPED`; o `.env` local ficou assim até 20/10 (backup em `.env.bak-2026-10-20`). Com `adb reverse`, `localhost` serve aos dois lados. Em aparelho físico pela rede, o IP da LAN também serve aos dois lados.
 
-No emulador a câmera é uma cena 3D falsa: use o **simulador de diagnóstico** (ícone de inseto na câmera, só sob `__DEV__`), que roda o pipeline real sem folha. Sem posição injetada no emulador, o GPS falha, e o diagnóstico é gravado sem posição: não vira pino no mapa.
+No emulador a câmera é uma cena 3D falsa. O **simulador de diagnóstico** (ícone de inseto na câmera, só sob `__DEV__`) roda o pipeline real sem folha, **menos a inferência**: com um alvo forçado, `runImageInference` espera 200 ms e devolve um resultado inventado (`tflite_mock_mobile_forced_v1.0`). Para exercitar o TFLite e a captura, use o **obturador**, mesmo apontado para a cena falsa: nada é gravado antes do "Analisar". O GPS do emulador não é previsível: em 27/10 ele entregou uma posição, e a foto virou pino; sem posição, o diagnóstico é gravado sem ela e não vira pino.
 
 **Chave do Google Maps:** vai em `GOOGLE_MAPS_ANDROID_API_KEY`, no `frontend/.env.local`, que o git ignora. O `app.config.ts` a lê, e o `@expo/env` carrega o arquivo tanto no prebuild quanto no build. O manifesto só muda no **prebuild**, e `expo run:android` só faz prebuild quando `android/` não existe. Por isso, ao pôr ou trocar a chave num `android/` já gerado, rode `npx expo prebuild --platform android`. Sem isso, a bandeira (regerada a cada build) diz que há chave, o manifesto continua sem ela, e o crash volta.
 
-**Três armadilhas de ambiente achadas em 22/10:**
+**Armadilhas de ambiente achadas em 22/10 e 27/10:**
 - `expo run:android` **não compila nesta máquina**. O `android/` e cerca de 30 `node_modules/*/android/{build,.cxx}` guardam o caminho antigo do repositório (`…/App de Diagnostico de plantas/…`). Resolver exige apagar esses diretórios e recompilar todo o C++. Enquanto nenhuma dependência nativa mudar, dá para usar o APK já instalado com `npx expo start`.
 - **Sem watchman, o Metro não viu mudança de arquivo** feita depois de iniciado, e serviu a versão velha da tela. Depois de mudar código, reinicie com `npx expo start --clear` antes de concluir qualquer coisa.
-- O toast do LogBox ("Open debugger to view warnings") **cobre a barra de abas** em dev e engole o toque. Feche-o pelo X.
+- O toast do LogBox ("Open debugger to view warnings") **cobre a barra de abas** em dev e engole o toque. Feche-o pelo X. Ele volta a cada `console.warn`, e o sync sem MinIO gera vários.
+- **`adb shell input text` sem um campo focado é perigoso** (27/10): o espaço clica no elemento com foco, e foi assim que o botão de sair da Home encerrou a sessão; um "rr" no texto recarrega o JS. Antes de digitar, confira o foco com `adb shell uiautomator dump`.
 
 ### Modelo SLM (cópia manual)
 
