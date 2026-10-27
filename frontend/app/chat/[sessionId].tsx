@@ -229,6 +229,17 @@ export default function ChatSessionScreen() {
     [reload]
   );
 
+  // A resposta disparada antes do router.replace da conversa livre termina na
+  // instância antiga, e o reload do onDone é o dela: esta instância nunca
+  // recarregaria. Recarrega quando a resposta em voo da sessão acaba (true -> false).
+  const emVoo = !!pendingResponses[sessionId];
+  const emVooAntes = useRef(emVoo);
+  useEffect(() => {
+    const terminou = emVooAntes.current && !emVoo;
+    emVooAntes.current = emVoo;
+    if (terminou && sessionId && !ehNova) void reload(sessionId);
+  }, [emVoo, sessionId, ehNova, reload]);
+
   // Carrega a sessão e, se a última mensagem é uma foto sem resposta, dispara
   // sozinho (spec §3.3). É o que faz "tirar foto → cair no chat já respondendo"
   // ser só uma navegação, e resolve o app morto no meio da resposta.
