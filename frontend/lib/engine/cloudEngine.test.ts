@@ -175,6 +175,27 @@ describe('CloudEngine', () => {
     warn.mockRestore();
   });
 
+  it('foto com userMessage vazio: o corpo leva o pedido fixo de análise, não vazio', async () => {
+    const attachment = { imageUri: 'file:///f.jpg', imageS3Key: 'k', diseaseName: 'Ferrugem',
+      cvResult: { diseaseId: 'uuid-doenca', confidence: 0.92, inferenceTimeMs: 40, modelUsed: 'tflite' } };
+    engine.respond(baseInput({ userMessage: '', attachment }), callbacks(), new AbortController().signal);
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    expect(bodyOf(FakeEventSource.last()).message).toBe('Analise o diagnóstico da foto enviada.');
+  });
+
+  it('histórico: a mensagem da foto vazia vira descrição e nenhum item sai com content vazio', async () => {
+    const foto = { ...msg(0), content: '', attachment: { imageUri: 'file:///f.jpg', diseaseName: 'Mancha Parda',
+      cvResult: { diseaseId: 'uuid', confidence: 0.164, inferenceTimeMs: 40, modelUsed: 'tflite' } } };
+    const vazia = { ...msg(1), content: '  ' };
+    engine.respond(baseInput({ history: [foto, vazia, msg(2)] }), callbacks(), new AbortController().signal);
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    const { history } = bodyOf(FakeEventSource.last());
+    expect(history[0].content).toBe('[Foto analisada: Mancha Parda, 16% de confiança]');
+    expect(history).toHaveLength(2);
+    expect(history.every((h: { content: string }) => h.content.trim() !== '')).toBe(true);
+  });
+
   it('repassa chunks e conclui no evento done', async () => {
     const cb = callbacks();
     engine.respond(baseInput(), cb, new AbortController().signal);

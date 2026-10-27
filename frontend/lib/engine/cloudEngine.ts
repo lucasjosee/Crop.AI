@@ -16,14 +16,28 @@ export const CLOUD_INACTIVITY_TIMEOUT_MS = 10_000;
 const LOCAL_ORIGIN_NOTE =
   '[Contexto do sistema: Algumas das respostas anteriores foram geradas por um modelo local compacto durante operação offline. Você pode corrigir ou complementar informações se necessário.]';
 
+// A mensagem da foto é gravada com content vazio, e o servidor exige min(1) em
+// `message` e em cada item do histórico: sem isto, a nuvem responde 400.
+const PEDIDO_ANALISE_FOTO = 'Analise o diagnóstico da foto enviada.';
+
 const baseURL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
 type HistoryItem = { role: 'user' | 'assistant'; content: string };
 
+function descricaoDaFoto(attachment: ChatAttachment): string {
+  const nome = attachment.diseaseName ?? attachment.cvResult.diseaseId;
+  const confianca = Math.round(attachment.cvResult.confidence * 100);
+  return `[Foto analisada: ${nome}, ${confianca}% de confiança]`;
+}
+
 function windowedHistory(history: ChatMessage[]): HistoryItem[] {
   const items: HistoryItem[] = history
     .slice(-CLOUD_HISTORY_WINDOW)
-    .map((m) => ({ role: m.role, content: m.content }));
+    .map((m) => ({
+      role: m.role,
+      content: !m.content.trim() && m.attachment ? descricaoDaFoto(m.attachment) : m.content,
+    }))
+    .filter((m) => m.content.trim() !== '');
   const cameFromLocal = history.some((m) => m.source === 'LOCAL_SLM');
   return cameFromLocal && items.length > 0 ? [{ role: 'user', content: LOCAL_ORIGIN_NOTE }, ...items] : items;
 }
@@ -82,7 +96,7 @@ export class CloudEngine implements ConversationEngine {
 
     const body = JSON.stringify({
       session_id: input.sessionId,
-      message: input.userMessage,
+      message: !input.userMessage.trim() && input.attachment ? PEDIDO_ANALISE_FOTO : input.userMessage,
       history: windowedHistory(input.history),
       catalog_context: input.catalogContext,
       ...(imageS3Key && { image_s3_key: imageS3Key }),
