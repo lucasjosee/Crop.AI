@@ -63,20 +63,22 @@ export default function ChatSessionScreen() {
   const [session, setSession] = useState<ChatSession | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
-  const [chatError, setChatError] = useState<string | null>(null);
-  const [partial, setPartial] = useState<string | null>(null);
-  // Distingue por que `partial` está na tela: resposta truncada por erro do
-  // motor (rótulo "resposta incompleta") vs. resposta completa que só não
-  // foi para o banco (rótulo "não salva") — os dois setam chatError, então
-  // não dá para usar a presença dele como discriminador.
-  const [partialUnsaved, setPartialUnsaved] = useState(false);
-  const [lastFailed, setLastFailed] = useState<ChatMessage | null>(null);
   const [details, setDetails] = useState<DiagnosisDetails | null>(null);
   // Único dado do card que não vem do banco: o status é PENDING tanto com a
   // chamada em voo quanto quando nunca foi tentada, e só esta tela distingue.
   const [isValidating, setIsValidating] = useState(false);
 
   const { isStreaming, streamingContent, pendingResponses, modelLoadProgress } = useChatStore();
+  // O desfecho de uma resposta que falhou mora na store, por sessão: a resposta
+  // da conversa livre é disparada antes do router.replace e termina em outra
+  // instância desta tela. `parcialNaoSalvo` distingue por que `partial` está na
+  // tela: resposta truncada por erro do motor ("resposta incompleta") vs.
+  // resposta completa que só não foi para o banco ("não salva").
+  const desfecho = useChatStore((s) => s.desfechos[sessionId]);
+  const chatError = desfecho?.mensagem ?? null;
+  const partial = desfecho?.parcial ?? null;
+  const partialUnsaved = desfecho?.parcialNaoSalvo ?? false;
+  const lastFailed = desfecho?.falhou ?? null;
   const { connectionMode } = useNetworkStore();
   const isBusy = isStreaming || !!pendingResponses[sessionId];
   const modeLabel = connectionMode === 'FIELD' ? '🌾 Campo' : '☁️ Online';
@@ -122,10 +124,7 @@ export default function ChatSessionScreen() {
 
       store.marcarRespostaEmVoo(alvo);
       store.resetStreaming();
-      setChatError(null);
-      setPartial(null);
-      setPartialUnsaved(false);
-      setLastFailed(null);
+      store.limparDesfecho(alvo);
 
       const history = (await listMessages(alvo)).filter((m) => m.id !== userMessage.id);
       const diseaseId = userMessage.attachment?.cvResult.diseaseId ?? (await getSessionDiseaseId(alvo));
@@ -168,9 +167,12 @@ export default function ChatSessionScreen() {
                   // A resposta existe mas não foi para o banco. Mantém na tela
                   // pelo mesmo caminho do parcial — sumir em silêncio seria pior,
                   // e o texto pode conter dosagem de defensivo.
-                  setPartial(streamed);
-                  setPartialUnsaved(true);
-                  setChatError('A resposta chegou mas não pôde ser salva. Copie o que precisar antes de sair da tela.');
+                  useChatStore.getState().registrarDesfecho(alvo, {
+                    mensagem: 'A resposta chegou mas não pôde ser salva. Copie o que precisar antes de sair da tela.',
+                    falhou: null,
+                    parcial: streamed,
+                    parcialNaoSalvo: true,
+                  });
                 }
               }
             }
@@ -188,9 +190,12 @@ export default function ChatSessionScreen() {
             useChatStore.getState().limparRespostaEmVoo(alvo);
             abortRef.current = null;
             if (error === 'ABORTED') return;
-            if (text.trim()) setPartial(text);
-            setChatError(ERROR_MESSAGES[error]);
-            setLastFailed(userMessage);
+            useChatStore.getState().registrarDesfecho(alvo, {
+              mensagem: ERROR_MESSAGES[error],
+              falhou: userMessage,
+              parcial: text.trim() ? text : null,
+              parcialNaoSalvo: false,
+            });
           },
         },
         controller.signal
@@ -224,6 +229,17 @@ export default function ChatSessionScreen() {
     [reload]
   );
 
+  // A resposta disparada antes do router.replace da conversa livre termina na
+  // instância antiga, e o reload do onDone é o dela: esta instância nunca
+  // recarregaria. Recarrega quando a resposta em voo da sessão acaba (true -> false).
+  const emVoo = !!pendingResponses[sessionId];
+  const emVooAntes = useRef(emVoo);
+  useEffect(() => {
+    const terminou = emVooAntes.current && !emVoo;
+    emVooAntes.current = emVoo;
+    if (terminou && sessionId && !ehNova) void reload(sessionId);
+  }, [emVoo, sessionId, ehNova, reload]);
+
   // Carrega a sessão e, se a última mensagem é uma foto sem resposta, dispara
   // sozinho (spec §3.3). É o que faz "tirar foto → cair no chat já respondendo"
   // ser só uma navegação, e resolve o app morto no meio da resposta.
@@ -248,8 +264,12 @@ export default function ChatSessionScreen() {
         // não há resposta em voo. Sem essa guarda, o efeito que re-roda depois do
         // router.replace acha a mensagem que sendMessage acabou de gravar e a
         // declara sem resposta enquanto o motor ainda está respondendo.
-        setLastFailed(pendente);
-        setChatError('Esta pergunta ficou sem resposta.');
+        useChatStore.getState().registrarDesfecho(sessionId, {
+          mensagem: 'Esta pergunta ficou sem resposta.',
+          falhou: pendente,
+          parcial: null,
+          parcialNaoSalvo: false,
+        });
       }
     })();
     return () => {

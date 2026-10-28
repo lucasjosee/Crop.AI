@@ -222,7 +222,7 @@ describe('useChatStore', () => {
   beforeEach(() => {
     useChatStore.getState().resetStreaming();
     useChatStore.getState().setActiveSession(null);
-    useChatStore.setState({ pendingResponses: {} });
+    useChatStore.setState({ pendingResponses: {}, desfechos: {} });
     useChatStore.getState().setModelLoadProgress(null);
   });
 
@@ -265,6 +265,27 @@ describe('useChatStore', () => {
     useChatStore.getState().limparRespostaEmVoo('inexistente');
 
     expect(useChatStore.getState().pendingResponses).toBe(antes);
+  });
+
+  it('desfechos são por sessão: registrar em uma não afeta a outra', () => {
+    const d = { mensagem: 'falhou', falhou: null, parcial: 'meio', parcialNaoSalvo: false };
+    useChatStore.getState().registrarDesfecho('s1', d);
+
+    expect(useChatStore.getState().desfechos.s1).toEqual(d);
+    expect(useChatStore.getState().desfechos.s2).toBeUndefined();
+  });
+
+  it('limparDesfecho remove só a sessão pedida, e limpar o que não existe não quebra', () => {
+    const d = { mensagem: 'x', falhou: null, parcial: null, parcialNaoSalvo: false };
+    useChatStore.getState().registrarDesfecho('s1', d);
+    useChatStore.getState().registrarDesfecho('s2', d);
+
+    useChatStore.getState().limparDesfecho('s1');
+    expect(Object.keys(useChatStore.getState().desfechos)).toEqual(['s2']);
+
+    const antes = useChatStore.getState().desfechos;
+    useChatStore.getState().limparDesfecho('inexistente');
+    expect(useChatStore.getState().desfechos).toBe(antes);
   });
 
   it('modelLoadProgress é o canal do carregamento do .gguf para a UI', () => {
