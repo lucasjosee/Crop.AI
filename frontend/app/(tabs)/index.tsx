@@ -92,7 +92,7 @@ export default function HomeScreen() {
           accessibilityLabel="Ver todas as conversas"
         >
           <Text style={styles.blocoTituloTexto}>CONVERSAS</Text>
-          <Text style={styles.blocoSeta}>›</Text>
+          <Ionicons name="chevron-forward" size={22} color={theme.colors.primary} />
         </TouchableOpacity>
 
         <View style={styles.bloco}>
@@ -122,7 +122,7 @@ export default function HomeScreen() {
           accessibilityLabel="Abrir o mapa de análises"
         >
           <Text style={styles.blocoTituloTexto}>MAPA DE ANÁLISES</Text>
-          <Text style={styles.blocoSeta}>›</Text>
+          <Ionicons name="chevron-forward" size={22} color={theme.colors.primary} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -200,7 +200,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
   },
-  blocoSeta: { color: theme.colors.primary, fontSize: 22 },
   bloco: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.lg,

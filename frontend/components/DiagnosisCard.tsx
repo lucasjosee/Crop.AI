@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, Text, Image, ActivityIndicator, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../config/theme';
+import { AVISO_LEGAL } from '../config/avisoLegal';
 import { Badge } from './Badge';
 import { DefensivoItem } from './DefensivoItem';
 import { getCrossValidationPriority } from '../lib/crossValidationService';
@@ -17,10 +19,6 @@ interface DiagnosisCardProps {
    */
   isValidating: boolean;
 }
-
-const AVISO_LEGAL =
-  'ATENÇÃO: produto de uso agrícola, venda sob receituário agronômico. ' +
-  'Consulte sempre um engenheiro agrônomo antes de aplicar (Lei 7.802/1989).';
 
 function severidade(
   details: DiagnosisDetails,
@@ -85,25 +83,44 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ attachment, detail
 
         {isDoenca && (cv.status === 'CONFIRMED' || cv.status === 'ENRICHED' || cv.status === 'DIVERGENT') ? (
           <View style={[styles.veredito, cv.status === 'DIVERGENT' && styles.vereditoDivergente]}>
-            <Text style={styles.vereditoTitulo}>
-              {cv.status === 'CONFIRMED'
-                ? '✅ Diagnóstico confirmado'
-                : cv.status === 'ENRICHED'
-                  ? '💡 Diagnóstico enriquecido'
-                  : '⚠️ As análises divergiram'}
-            </Text>
+            <View style={styles.vereditoLinha}>
+              <Ionicons
+                name={
+                  cv.status === 'CONFIRMED'
+                    ? 'checkmark-circle'
+                    : cv.status === 'ENRICHED'
+                      ? 'bulb-outline'
+                      : 'warning-outline'
+                }
+                size={16}
+                color={cv.status === 'DIVERGENT' ? theme.colors.warning : theme.colors.primary}
+              />
+              <Text style={styles.vereditoTitulo}>
+                {cv.status === 'CONFIRMED'
+                  ? 'Diagnóstico confirmado'
+                  : cv.status === 'ENRICHED'
+                    ? 'Diagnóstico enriquecido'
+                    : 'As análises divergiram'}
+              </Text>
+            </View>
 
             {prioridade.showBoth ? (
               <View style={styles.opinioes}>
-                <Text style={styles.opiniao}>
-                  🔬 Modelo local: {nomeLocal} ({Math.round(confidence * 100)}%)
-                  {prioridade.primary === 'CV' ? ' • resultado primário' : ''}
-                </Text>
-                <Text style={styles.opiniao}>
-                  ☁️ Agrônomo IA: {cv.llmDoencaNome ?? 'outra hipótese'}
-                  {cv.llmConfianca !== null ? ` (${Math.round(cv.llmConfianca * 100)}%)` : ''}
-                  {prioridade.primary === 'LLM' ? ' • sugestão primária' : ''}
-                </Text>
+                <View style={styles.opiniaoLinha}>
+                  <Ionicons name="hardware-chip-outline" size={14} color={theme.colors.text} />
+                  <Text style={styles.opiniao}>
+                    Modelo local: {nomeLocal} ({Math.round(confidence * 100)}%)
+                    {prioridade.primary === 'CV' ? ' • resultado primário' : ''}
+                  </Text>
+                </View>
+                <View style={styles.opiniaoLinha}>
+                  <Ionicons name="cloud-outline" size={14} color={theme.colors.text} />
+                  <Text style={styles.opiniao}>
+                    Agrônomo IA: {cv.llmDoencaNome ?? 'outra hipótese'}
+                    {cv.llmConfianca !== null ? ` (${Math.round(cv.llmConfianca * 100)}%)` : ''}
+                    {prioridade.primary === 'LLM' ? ' • sugestão primária' : ''}
+                  </Text>
+                </View>
                 <Text style={styles.avisoDivergencia}>
                   As duas opiniões permanecem visíveis. Consulte um engenheiro agrônomo para confirmar.
                 </Text>
@@ -190,7 +207,9 @@ const styles = StyleSheet.create({
   vereditoDivergente: { backgroundColor: theme.colors.warning + '20' },
   vereditoTitulo: { color: theme.colors.text, fontSize: theme.typography.fontSize.sm, fontWeight: '700' },
   opinioes: { marginTop: theme.spacing.sm, gap: 4 },
-  opiniao: { color: theme.colors.text, fontSize: theme.typography.fontSize.xs },
+  vereditoLinha: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
+  opiniaoLinha: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
+  opiniao: { color: theme.colors.text, fontSize: theme.typography.fontSize.xs, flexShrink: 1 },
   avisoDivergencia: { color: theme.colors.warning, fontSize: theme.typography.fontSize.xs, fontWeight: '600', marginTop: 4 },
   observacoes: { color: theme.colors.text, fontSize: theme.typography.fontSize.xs, marginTop: theme.spacing.sm },
   especial: { color: theme.colors.text, fontSize: theme.typography.fontSize.sm, marginTop: theme.spacing.md, lineHeight: 20 },

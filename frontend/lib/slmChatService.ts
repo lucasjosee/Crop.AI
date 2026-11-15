@@ -1,6 +1,7 @@
 // frontend/lib/slmChatService.ts
 import { File, Paths } from 'expo-file-system';
 import type { LlamaContext } from 'llama.rn';
+import { AVISO_LEGAL } from '../config/avisoLegal';
 
 // Path where the .gguf file must exist on the device.
 // Dev: copy manually to documentDirectory/models/
@@ -12,7 +13,7 @@ export const SLM_SYSTEM_PROMPT = `Você é um Agrônomo Virtual especializado em
 Responda de forma clara e objetiva usando APENAS as informações do contexto fornecido.
 Se não encontrar informação no contexto, diga que não tem essa informação disponível offline.
 Seja conciso — máximo 3 parágrafos.
-SEMPRE inclua ao final: "⚠️ Consulte um engenheiro agrônomo registrado no CREA antes de aplicar qualquer defensivo."`;
+SEMPRE inclua ao final: "${AVISO_LEGAL}"`;
 
 export interface SlmLoadProgress {
   progress: number; // 0.0 to 1.0

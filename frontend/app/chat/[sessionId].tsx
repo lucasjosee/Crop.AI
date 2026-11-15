@@ -12,6 +12,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { engineRouter, type EngineError } from '../../lib/engine';
@@ -29,6 +30,8 @@ import {
 } from '../../lib/chatRepository';
 import { buildCatalogContext } from '../../lib/catalogContext';
 import { DiagnosisCard } from '../../components/DiagnosisCard';
+import { ConnectionIndicator } from '../../components/ConnectionIndicator';
+import { TextoFormatado } from '../../components/TextoFormatado';
 import { FeedbackPanel } from '../../components/FeedbackPanel';
 import { loadDiagnosisDetails, type DiagnosisDetails } from '../../lib/diagnosisDetails';
 import { runPendingCrossValidation } from '../../lib/crossValidationService';
@@ -36,6 +39,7 @@ import type { ChatAttachment } from '../../lib/chatRepository';
 import { useChatStore } from '../../store/useChatStore';
 import { useNetworkStore } from '../../store/useNetworkStore';
 import { theme } from '../../config/theme';
+import { AVISO_LEGAL } from '../../config/avisoLegal';
 
 const ERROR_MESSAGES: Record<EngineError, string> = {
   MODEL_NOT_LOADED: 'Modelo offline não instalado. A resposta chega quando a conexão voltar.',
@@ -46,13 +50,6 @@ const ERROR_MESSAGES: Record<EngineError, string> = {
   ABORTED: '',
   UNKNOWN: 'Não foi possível gerar a resposta. Toque em tentar de novo.',
 };
-
-/**
- * RF02 / Lei 7.802. A prosa do motor cita defensivo e dosagem tanto quanto o
- * card, e até aqui esta tela não avisava nada.
- */
-const AVISO_LEGAL =
-  'Recomendações de defensivo exigem validação de engenheiro agrônomo (Lei 7.802/1989).';
 
 export default function ChatSessionScreen() {
   const router = useRouter();
@@ -79,9 +76,7 @@ export default function ChatSessionScreen() {
   const partial = desfecho?.parcial ?? null;
   const partialUnsaved = desfecho?.parcialNaoSalvo ?? false;
   const lastFailed = desfecho?.falhou ?? null;
-  const { connectionMode } = useNetworkStore();
   const isBusy = isStreaming || !!pendingResponses[sessionId];
-  const modeLabel = connectionMode === 'FIELD' ? '🌾 Campo' : '☁️ Online';
   // Rota de conversa que ainda não existe: a sessão nasce no primeiro envio.
   const ehNova = sessionId === SESSAO_NOVA;
 
@@ -345,7 +340,10 @@ export default function ChatSessionScreen() {
                 isValidating={isValidating}
               />
               {details.feedbackJaEnviado ? (
-                <Text style={styles.feedbackFeito}>✓ Feedback registrado</Text>
+                <View style={styles.feedbackFeito}>
+                  <Ionicons name="checkmark" size={14} color={theme.colors.primary} />
+                  <Text style={styles.feedbackFeitoTexto}>Feedback registrado</Text>
+                </View>
               ) : item.attachment.diagnosticLocalId ? (
                 <View style={styles.feedbackCaixa}>
                   <FeedbackPanel
@@ -364,9 +362,18 @@ export default function ChatSessionScreen() {
       return (
         <View style={[styles.messageRow, isUser ? styles.userRow : styles.assistantRow]}>
           <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
-            <Text style={[styles.messageText, isUser && styles.userText]}>{item.content}</Text>
+            {isUser ? (
+              <Text style={[styles.messageText, styles.userText]}>{item.content}</Text>
+            ) : (
+              <TextoFormatado texto={item.content} style={styles.messageText} />
+            )}
             {!isUser && item.source && (
-              <Text style={styles.sourceBadge}>{item.source === 'CLOUD_LLM' ? '☁️' : '📱'}</Text>
+              <Ionicons
+                name={item.source === 'CLOUD_LLM' ? 'cloud-outline' : 'phone-portrait-outline'}
+                size={12}
+                color={theme.colors.textSecondary}
+                style={styles.sourceBadge}
+              />
             )}
           </View>
         </View>
@@ -389,14 +396,12 @@ export default function ChatSessionScreen() {
             accessibilityRole="button"
             accessibilityLabel="Voltar"
           >
-            <Text style={styles.backButton}>←</Text>
+            <Ionicons name="arrow-back" size={24} color={theme.colors.primary} style={styles.backButton} />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>
             {ehNova ? 'Nova conversa' : session?.title ?? 'Agrônomo Virtual'}
           </Text>
-          <View style={[styles.modeBadge, connectionMode === 'FIELD' ? styles.fieldBadge : styles.onlineBadge]}>
-            <Text style={styles.modeBadgeText}>{modeLabel}</Text>
-          </View>
+          <ConnectionIndicator />
         </View>
 
         {modelLoadProgress !== null && (
@@ -431,12 +436,13 @@ export default function ChatSessionScreen() {
         {(isStreaming && streamingContent !== '') || partial ? (
           <View style={[styles.messageRow, styles.assistantRow]}>
             <View style={[styles.bubble, styles.assistantBubble]}>
-              <Text style={styles.messageText}>{partial ?? streamingContent}</Text>
+              <TextoFormatado texto={partial ?? streamingContent} style={styles.messageText} />
               {partial && <Text style={styles.partialNote}>{partialUnsaved ? 'não salva' : 'resposta incompleta'}</Text>}
             </View>
           </View>
         ) : null}
 
+        {/* RF02: a prosa do motor cita defensivo e dosagem tanto quanto o card. */}
         <Text style={styles.avisoLegal}>{AVISO_LEGAL}</Text>
 
         <View style={styles.inputRow}>
@@ -451,7 +457,7 @@ export default function ChatSessionScreen() {
           />
           {isBusy ? (
             <TouchableOpacity style={styles.sendButton} onPress={stopResponse} accessibilityRole="button" accessibilityLabel="Parar">
-              <Text style={styles.sendButtonText}>■</Text>
+              <Ionicons name="stop" size={18} color="#FFFFFF" />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
@@ -461,7 +467,7 @@ export default function ChatSessionScreen() {
               accessibilityRole="button"
               accessibilityLabel="Enviar"
             >
-              <Text style={styles.sendButtonText}>➤</Text>
+              <Ionicons name="send" size={18} color="#FFFFFF" />
             </TouchableOpacity>
           )}
         </View>
@@ -481,17 +487,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
-  backButton: { color: theme.colors.primary, fontSize: 24, marginRight: 12 },
+  backButton: { marginRight: 12 },
   headerTitle: {
     flex: 1,
     color: theme.colors.text,
     fontSize: theme.typography.fontSize.lg,
     fontWeight: '600',
   },
-  modeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: theme.borderRadius.round },
-  onlineBadge: { backgroundColor: theme.colors.primaryLight10 },
-  fieldBadge: { backgroundColor: theme.colors.warning + '20' },
-  modeBadgeText: { fontSize: theme.typography.fontSize.xs, fontWeight: '600', color: theme.colors.text },
   slmLoadingBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -527,7 +529,7 @@ const styles = StyleSheet.create({
   },
   messageText: { color: theme.colors.text, fontSize: theme.typography.fontSize.md, lineHeight: 22 },
   userText: { color: '#FFFFFF' },
-  sourceBadge: { fontSize: 10, marginTop: 4, opacity: 0.5 },
+  sourceBadge: { marginTop: 4 },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -556,7 +558,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sendButtonDisabled: { opacity: 0.4 },
-  sendButtonText: { color: '#FFFFFF', fontSize: 18 },
   retryText: { color: theme.colors.primary, fontWeight: '600', marginTop: 6 },
   partialNote: { fontSize: 11, color: theme.colors.textSecondary, marginTop: 4, fontStyle: 'italic' },
   fotoSozinha: {
@@ -576,10 +577,15 @@ const styles = StyleSheet.create({
     marginTop: -theme.spacing.sm,
   },
   feedbackFeito: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    marginTop: 6,
+  },
+  feedbackFeitoTexto: {
     color: theme.colors.primary,
     fontSize: theme.typography.fontSize.xs,
     fontWeight: '600',
-    marginTop: 6,
   },
   avisoLegal: {
     color: theme.colors.textSecondary,
