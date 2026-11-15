@@ -8,12 +8,15 @@
 // O bloco do mapa é contagem e não `MapView` — funciona offline e não depende
 // da chave do Google Maps, que ainda não foi provisionada para Android.
 import { useCallback, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { Alert, View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useNetworkStore } from '../../store/useNetworkStore';
+import { useSyncStore } from '../../store/useSyncStore';
+import { textoDaConfirmacaoDeSaida } from '../../lib/confirmacaoDeSaida';
 import { listSessions, listMapSessions, type SessionListItem } from '../../lib/chatRepository';
 import { resumoDoMapa, type ResumoMapa } from '../../lib/mapPins';
 import { ItemConversa } from '../../components/ItemConversa';
@@ -63,6 +66,21 @@ export default function HomeScreen() {
     }
   }, [logout]);
 
+  // Sair não apaga os dados locais, mas sem rede o produtor não volta a entrar:
+  // a confirmação diz isso antes de o logout acontecer.
+  const confirmarSaida = useCallback(async () => {
+    await useSyncStore.getState().refreshCounts();
+    const { pendingDiagnostics, pendingFeedbacks, pendingConversations } = useSyncStore.getState();
+    const { titulo, mensagem } = textoDaConfirmacaoDeSaida({
+      modo: useNetworkStore.getState().connectionMode,
+      pendentes: pendingDiagnostics + pendingFeedbacks + pendingConversations,
+    });
+    Alert.alert(titulo, mensagem, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Sair', style: 'destructive', onPress: () => void sair() },
+    ]);
+  }, [sair]);
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
@@ -73,7 +91,7 @@ export default function HomeScreen() {
         <View style={styles.headerDireita}>
           <ConnectionIndicator />
           <TouchableOpacity
-            onPress={() => void sair()}
+            onPress={() => void confirmarSaida()}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             accessibilityRole="button"
             accessibilityLabel="Sair da conta"
