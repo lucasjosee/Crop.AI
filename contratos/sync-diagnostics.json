@@ -1,0 +1,80 @@
+{
+  "rota": "POST /api/v1/sync/diagnostics",
+  "casos": [
+    {
+      "nome": "diagnóstico com posição e segunda opinião confirmada",
+      "corpo": {
+        "diagnostics": [
+          {
+            "local_id": "11111111-1111-4111-8111-111111111111",
+            "timestamp": "2026-07-20T12:00:00.000Z",
+            "image_s3_key": "diagnosticos/22222222-2222-4222-8222-222222222222/11111111-1111-4111-8111-111111111111.jpg",
+            "location": { "lat": -16.6869, "lng": -49.2648 },
+            "ai_result": {
+              "doenca_id": "33333333-3333-4333-8333-333333333333",
+              "confianca": 0.91,
+              "modelo_usado": "tflite_exemplo_v1.0",
+              "tempo_inferencia_ms": 48
+            },
+            "cross_validation": {
+              "status": "CONFIRMED",
+              "llm_doenca_id": "33333333-3333-4333-8333-333333333333",
+              "llm_confianca": 0.88,
+              "llm_observacoes": "A lesão descrita é compatível com a doença indicada pelo modelo local."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "nome": "diagnóstico sem leitura de GPS (location nula)",
+      "corpo": {
+        "diagnostics": [
+          {
+            "local_id": "44444444-4444-4444-8444-444444444444",
+            "timestamp": "2026-07-21T09:30:00.000Z",
+            "image_s3_key": "diagnosticos/22222222-2222-4222-8222-222222222222/44444444-4444-4444-8444-444444444444.jpg",
+            "location": null,
+            "ai_result": {
+              "doenca_id": "33333333-3333-4333-8333-333333333333",
+              "confianca": 0.76,
+              "modelo_usado": "tflite_exemplo_v1.0",
+              "tempo_inferencia_ms": 52
+            },
+            "cross_validation": {
+              "status": "SKIPPED",
+              "llm_doenca_id": null,
+              "llm_confianca": null,
+              "llm_observacoes": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "nome": "classe especial (Saudável) com doenca_id nulo",
+      "corpo": {
+        "diagnostics": [
+          {
+            "local_id": "55555555-5555-4555-8555-555555555555",
+            "timestamp": "2026-07-22T15:45:00.000Z",
+            "image_s3_key": "diagnosticos/22222222-2222-4222-8222-222222222222/55555555-5555-4555-8555-555555555555.jpg",
+            "location": { "lat": -16.7, "lng": -49.3 },
+            "ai_result": {
+              "doenca_id": null,
+              "confianca": 0.95,
+              "modelo_usado": "tflite_exemplo_v1.0",
+              "tempo_inferencia_ms": 0
+            },
+            "cross_validation": {
+              "status": "SKIPPED",
+              "llm_doenca_id": null,
+              "llm_confianca": null,
+              "llm_observacoes": null
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

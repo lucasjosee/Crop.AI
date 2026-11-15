@@ -35,7 +35,7 @@ interface Envelope {
  * exatamente as mensagens deste envelope quando (e só quando) a resposta
  * confirmar o lote em que ele foi enviado, nunca a lista inteira da sessão.
  */
-interface EnvelopeParaEnviar {
+export interface EnvelopeParaEnviar {
   envelope: Envelope;
   sessionId: string;
   mensagens: Row[];
@@ -131,7 +131,7 @@ function paraEnvelopeMensagem(row: Row): EnvelopeMensagem {
   };
 }
 
-function montarEnvelopes(sessao: Row, mensagens: Row[]): EnvelopeParaEnviar[] {
+export function montarEnvelopes(sessao: Row, mensagens: Row[]): EnvelopeParaEnviar[] {
   const base = {
     session_id: sessao.id,
     // A migração v7 monta o título com `?? 'Conversa'`, que não dispara para
@@ -158,6 +158,11 @@ function montarEnvelopes(sessao: Row, mensagens: Row[]): EnvelopeParaEnviar[] {
     });
   }
   return envelopes;
+}
+
+/** Corpo de POST /sync/conversations para os envelopes de um lote. Puro. */
+export function montarCorpoConversas(lote: EnvelopeParaEnviar[]) {
+  return { conversations: lote.map((e) => e.envelope) };
 }
 
 async function marcarMensagensSincronizadas(mensagens: Row[]): Promise<void> {
@@ -226,9 +231,7 @@ export async function syncPendingConversations(includeFailed = false): Promise<S
 
   for (let i = 0; i < envelopes.length; i += MAX_CONVERSAS_POR_LOTE) {
     const lote = envelopes.slice(i, i + MAX_CONVERSAS_POR_LOTE);
-    const { data } = await api.post('/api/v1/sync/conversations', {
-      conversations: lote.map((e) => e.envelope),
-    });
+    const { data } = await api.post('/api/v1/sync/conversations', montarCorpoConversas(lote));
 
     const confirmadosNesteLote = new Set<string>();
     for (const item of data.synced_items ?? []) {

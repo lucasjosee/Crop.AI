@@ -1,0 +1,55 @@
+{
+  "rota": "POST /api/v1/chat/stream",
+  "casos": [
+    {
+      "nome": "conversa livre só de texto",
+      "corpo": {
+        "session_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "message": "Quando devo aplicar o fungicida?",
+        "history": [
+          { "role": "user", "content": "Minha soja está no estágio R3." },
+          { "role": "assistant", "content": "Entendi. Qual sintoma você observa nas folhas?" }
+        ],
+        "catalog_context": "Doença: Ferrugem Asiática. Sintomas: pústulas na face inferior da folha."
+      }
+    },
+    {
+      "nome": "foto com mensagem vazia e histórico em que a mensagem antiga é a da foto",
+      "corpo": {
+        "session_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "message": "Analise o diagnóstico da foto enviada.",
+        "history": [
+          { "role": "user", "content": "[Foto analisada: Ferrugem Asiática, 87% de confiança]" },
+          { "role": "assistant", "content": "O quadro é compatível com a doença indicada." }
+        ],
+        "catalog_context": "Doença: Ferrugem Asiática. Sintomas: pústulas na face inferior da folha.",
+        "image_s3_key": "diagnosticos/22222222-2222-4222-8222-222222222222/11111111-1111-4111-8111-111111111111.jpg",
+        "cv_result": {
+          "doenca_id": "33333333-3333-4333-8333-333333333333",
+          "doenca_nome": "Ferrugem Asiática",
+          "confianca": 0.87,
+          "modelo_usado": "tflite_exemplo_v1.0"
+        }
+      }
+    },
+    {
+      "nome": "foto de classe especial (Saudável) com histórico vindo do motor local",
+      "corpo": {
+        "session_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        "message": "Analise o diagnóstico da foto enviada.",
+        "history": [
+          { "role": "user", "content": "[Contexto do sistema: Algumas das respostas anteriores foram geradas por um modelo local compacto durante operação offline. Você pode corrigir ou complementar informações se necessário.]" },
+          { "role": "user", "content": "A folha parece boa?" },
+          { "role": "assistant", "content": "Sem sinais de doença nesta folha." }
+        ],
+        "catalog_context": "",
+        "cv_result": {
+          "doenca_id": null,
+          "doenca_nome": "Saudável",
+          "confianca": 0.95,
+          "modelo_usado": "tflite_exemplo_v1.0"
+        }
+      }
+    }
+  ]
+}

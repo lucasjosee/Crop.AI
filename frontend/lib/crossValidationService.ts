@@ -41,6 +41,25 @@ export class CrossValidationRequestError extends Error {
   }
 }
 
+/** Corpo de POST /diagnosis/cross-validate. Puro. */
+export function montarCorpoCrossValidate(
+  localId: string,
+  imageS3Key: string,
+  cvResult: CrossValidateDiagnosticInput['cvResult']
+) {
+  return {
+    diagnostic_local_id: localId,
+    image_s3_key: imageS3Key,
+    cv_result: {
+      doenca_id: cvResult.doencaId,
+      doenca_nome: cvResult.doencaNome,
+      confianca: cvResult.confianca,
+      modelo_usado: cvResult.modeloUsado,
+      tempo_inferencia_ms: cvResult.tempoInferenciaMs,
+    },
+  };
+}
+
 export async function crossValidateDiagnostic(
   input: CrossValidateDiagnosticInput
 ): Promise<{ imageS3Key: string; result: CrossValidationResult }> {
@@ -60,17 +79,7 @@ export async function crossValidateDiagnostic(
   try {
     const { data } = await api.post(
       '/api/v1/diagnosis/cross-validate',
-      {
-        diagnostic_local_id: input.localId,
-        image_s3_key: imageS3Key,
-        cv_result: {
-          doenca_id: input.cvResult.doencaId,
-          doenca_nome: input.cvResult.doencaNome,
-          confianca: input.cvResult.confianca,
-          modelo_usado: input.cvResult.modeloUsado,
-          tempo_inferencia_ms: input.cvResult.tempoInferenciaMs,
-        },
-      },
+      montarCorpoCrossValidate(input.localId, imageS3Key, input.cvResult),
       { timeout: 17_000 }
     );
     result = data.cross_validation as CrossValidationResult;

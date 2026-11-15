@@ -53,6 +53,18 @@ function cvResultPayload(attachment: ChatAttachment) {
   };
 }
 
+/** Corpo de POST /chat/stream. Puro: o contrato com o servidor se testa por ele. */
+export function montarCorpoChat(input: EngineInput, imageS3Key?: string) {
+  return {
+    session_id: input.sessionId,
+    message: !input.userMessage.trim() && input.attachment ? PEDIDO_ANALISE_FOTO : input.userMessage,
+    history: windowedHistory(input.history),
+    catalog_context: input.catalogContext,
+    ...(imageS3Key && { image_s3_key: imageS3Key }),
+    ...(input.attachment && { cv_result: cvResultPayload(input.attachment) }),
+  };
+}
+
 function mapHttpStatus(status: number | undefined): EngineError {
   if (status === 401) return 'TOKEN_EXPIRED';
   if (status === 429) return 'RATE_LIMITED';
@@ -94,14 +106,7 @@ export class CloudEngine implements ConversationEngine {
       console.warn('[CloudEngine] Upload da foto falhou; seguindo sem a imagem.', err);
     }
 
-    const body = JSON.stringify({
-      session_id: input.sessionId,
-      message: !input.userMessage.trim() && input.attachment ? PEDIDO_ANALISE_FOTO : input.userMessage,
-      history: windowedHistory(input.history),
-      catalog_context: input.catalogContext,
-      ...(imageS3Key && { image_s3_key: imageS3Key }),
-      ...(input.attachment && { cv_result: cvResultPayload(input.attachment) }),
-    });
+    const body = JSON.stringify(montarCorpoChat(input, imageS3Key));
 
     const start = Date.now();
     let token = useAuthStore.getState().accessToken ?? '';
