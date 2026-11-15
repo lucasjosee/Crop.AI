@@ -13,15 +13,6 @@ interface SyncState {
   syncNow: (opts?: { manual?: boolean }) => Promise<void>;
 }
 
-function countUnsynced(res: any): number {
-  let total = 0;
-  for (let i = 0; i < res.rows.length; i++) {
-    const status = res.rows.item(i).sync_status;
-    if (status === 'PENDING' || status === 'FAILED') total += 1;
-  }
-  return total;
-}
-
 export const useSyncStore = create<SyncState>((set, get) => ({
   pendingDiagnostics: 0,
   pendingFeedbacks: 0,
@@ -32,21 +23,24 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   refreshCounts: async () => {
     try {
+      const contar = async (sql: string): Promise<number> => {
+        const res = await dbDriver.execute(sql);
+        return Number(res.rows.item(0)?.n ?? 0);
+      };
       const [diags, feedbacks, conversas] = await Promise.all([
-        dbDriver.execute('SELECT * FROM fila_diagnosticos;'),
-        dbDriver.execute('SELECT * FROM fila_feedbacks;'),
-        dbDriver.execute(
-          `SELECT s.id FROM chat_sessions s
+        contar(`SELECT COUNT(*) AS n FROM fila_diagnosticos WHERE sync_status IN ('PENDING', 'FAILED');`),
+        contar(`SELECT COUNT(*) AS n FROM fila_feedbacks WHERE sync_status IN ('PENDING', 'FAILED');`),
+        contar(
+          `SELECT COUNT(*) AS n FROM chat_sessions s
             WHERE s.sync_status IN ('PENDING', 'FAILED')
                OR EXISTS (SELECT 1 FROM chat_messages m
                            WHERE m.session_id = s.id AND m.sync_status = 'PENDING');`
         ),
       ]);
       set({
-        pendingDiagnostics: countUnsynced(diags),
-        pendingFeedbacks: countUnsynced(feedbacks),
-        // A consulta já filtra; aqui é contagem de linhas, não de status.
-        pendingConversations: conversas.rows.length,
+        pendingDiagnostics: diags,
+        pendingFeedbacks: feedbacks,
+        pendingConversations: conversas,
       });
     } catch {
       console.warn('[SyncStore] Falha ao contar pendências.');

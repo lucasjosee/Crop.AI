@@ -170,10 +170,19 @@ export async function syncPendingDiagnostics(includeFailed = false): Promise<Ste
   return total;
 }
 
-async function syncFatiaFeedbacks(
-  rows: QueueRow[],
-  serverIdByLocal: Record<string, string | null>
-): Promise<StepResult> {
+async function syncFatiaFeedbacks(rows: QueueRow[]): Promise<StepResult> {
+  // Só o server_id dos diagnósticos que esta fatia referencia (no máximo 50
+  // ids), em vez de ler a fila de diagnósticos inteira.
+  const locais = [...new Set(rows.map((r) => r.diagnostic_local_id))];
+  const diagRows = toArray(
+    await dbDriver.execute(
+      `SELECT local_id, server_id FROM fila_diagnosticos WHERE local_id IN (${locais.map(() => '?').join(', ')});`,
+      locais
+    )
+  );
+  const serverIdByLocal: Record<string, string | null> = {};
+  for (const d of diagRows) serverIdByLocal[d.local_id] = d.server_id ?? null;
+
   const { data } = await api.post('/api/v1/sync/feedback', montarCorpoFeedbacks(rows, serverIdByLocal));
 
   for (const item of data.processed_items ?? []) {
@@ -192,15 +201,9 @@ async function syncFatiaFeedbacks(
 
 export async function syncPendingFeedbacks(includeFailed = false): Promise<StepResult> {
   const rows = await getQueueRows('fila_feedbacks', includeFailed);
-  if (rows.length === 0) return { synced: 0, failed: 0 };
-
-  const diagRows = toArray(await dbDriver.execute('SELECT * FROM fila_diagnosticos;'));
-  const serverIdByLocal: Record<string, string | null> = {};
-  for (const d of diagRows) serverIdByLocal[d.local_id] = d.server_id ?? null;
-
   const total: StepResult = { synced: 0, failed: 0 };
   for (const fatia of emFatias(rows, MAX_ITENS_POR_LOTE)) {
-    const r = await syncFatiaFeedbacks(fatia, serverIdByLocal);
+    const r = await syncFatiaFeedbacks(fatia);
     total.synced += r.synced;
     total.failed += r.failed;
   }

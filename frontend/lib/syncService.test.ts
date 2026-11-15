@@ -18,6 +18,11 @@ const mocks = vi.hoisted(() => {
     const selStatus = s.match(/^select \* from (\w+) where sync_status = \?/);
     if (selStatus) return wrap(tables[selStatus[1]].filter((r) => r.sync_status === params[0]));
 
+    // vínculo do feedback: só o server_id dos diagnósticos pedidos
+    if (s.startsWith('select local_id, server_id from fila_diagnosticos where local_id in')) {
+      return wrap(tables.fila_diagnosticos.filter((r) => params.includes(r.local_id)));
+    }
+
     const selAll = s.match(/^select \* from (\w+);?$/);
     if (selAll) return wrap([...tables[selAll[1]]]);
 

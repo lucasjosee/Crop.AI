@@ -11,12 +11,16 @@ const mocks = vi.hoisted(() => {
     rows: { _array: arr, length: arr.length, item: (i: number) => arr[i] },
     rowsAffected: 0,
   });
+  // O filtro de status e o COUNT são do SQL e não rodam neste fake; quem os
+  // prova é useSyncStore.sqlite.test.ts. Aqui o fake só devolve `n`.
   const execute = vi.fn(async (sql: string) => {
     const s = sql.trim().toLowerCase();
-    // A contagem de conversas não é `select * from <tabela>`: ela filtra no SQL.
-    if (s.includes('from chat_sessions')) return wrap([...tables.chat_sessions]);
-    const m = s.match(/^select \* from (\w+)/);
-    if (m) return wrap([...tables[m[1]]]);
+    if (s.includes('from chat_sessions')) return wrap([{ n: tables.chat_sessions.length }]);
+    const m = s.match(/^select count\(\*\) as n from (\w+) where sync_status in \('pending', 'failed'\)/);
+    if (m) {
+      const n = tables[m[1]].filter((r) => ['PENDING', 'FAILED'].includes(r.sync_status)).length;
+      return wrap([{ n }]);
+    }
     return wrap([]);
   });
   return { tables, execute };
