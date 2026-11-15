@@ -51,6 +51,15 @@ describe('startDiagnosisSession', () => {
     mocks.saveImage.mockResolvedValue('file:///documentos/diag_1.jpg');
   });
 
+  it('não grava nada quando a foto não pôde ser guardada', async () => {
+    const causa = new Error('disco cheio');
+    mocks.saveImage.mockRejectedValue(causa);
+
+    await expect(startDiagnosisSession(input())).rejects.toBe(causa);
+
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+
   it('grava diagnóstico, sessão e mensagem da foto, e devolve os dois ids', async () => {
     const result = await startDiagnosisSession(input());
 

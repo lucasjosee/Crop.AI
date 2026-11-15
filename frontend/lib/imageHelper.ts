@@ -17,11 +17,22 @@ const DATA_URI_BASE64 = /^data:([^;,]*);base64,(.*)$/s;
  * copiado, e um `data:` URI em base64 (simulador de diagnóstico em __DEV__),
  * que é decodificado para um arquivo de verdade.
  *
- * Se falhar, devolve o `tempUri` original e registra a causa.
+ * Se falhar, registra a causa e lança `FotoNaoGuardadaError`. Devolver o
+ * caminho do cache gravaria uma análise cuja foto o sistema pode limpar antes
+ * de ela subir.
  *
  * @param tempUri URI temporária da imagem capturada ou selecionada.
- * @returns URI persistente da imagem, ou `tempUri` se não foi possível salvar.
+ * @returns URI persistente da imagem.
  */
+/** A foto não chegou ao diretório persistente; a análise não deve ser gravada. */
+export class FotoNaoGuardadaError extends Error {
+  constructor(causa?: unknown) {
+    super('Não foi possível guardar a foto no armazenamento persistente.');
+    this.name = 'FotoNaoGuardadaError';
+    this.cause = causa;
+  }
+}
+
 export async function saveImagePersistently(tempUri: string): Promise<string> {
   try {
     const dataUri = DATA_URI_BASE64.exec(tempUri);
@@ -44,7 +55,7 @@ export async function saveImagePersistently(tempUri: string): Promise<string> {
 
     return destination.uri;
   } catch (erro) {
-    console.error('[ImageHelper] Failed to save image persistently, returning original cache path.', erro);
-    return tempUri;
+    console.error('[ImageHelper] Failed to save image persistently.', erro);
+    throw new FotoNaoGuardadaError(erro);
   }
 }

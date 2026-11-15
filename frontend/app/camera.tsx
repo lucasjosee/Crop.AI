@@ -23,6 +23,7 @@ import { runImageInference, type InferenceResult } from '../lib/inference';
 import { resolveDiseaseName } from '../lib/diagnosisDetails';
 import { diagnosticoIncerto } from '../lib/confianca';
 import { startDiagnosisSession } from '../lib/diagnosisSessionService';
+import { FotoNaoGuardadaError } from '../lib/imageHelper';
 
 /** Imagem mínima para o simulador de diagnóstico; só existe sob __DEV__. */
 const IMAGEM_MOCK =
@@ -186,7 +187,10 @@ export default function CameraScreen() {
       Toast.show({
         type: 'error',
         text1: 'Não foi possível abrir a conversa',
-        text2: 'Nada foi salvo. Tente de novo.',
+        text2:
+          erro instanceof FotoNaoGuardadaError
+            ? 'Não foi possível guardar a foto. Verifique o espaço livre do aparelho.'
+            : 'Nada foi salvo. Tente de novo.',
       });
       setConfirmando(false);
     }
