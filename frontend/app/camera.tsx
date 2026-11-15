@@ -24,6 +24,7 @@ import { resolveDiseaseName } from '../lib/diagnosisDetails';
 import { diagnosticoIncerto } from '../lib/confianca';
 import { startDiagnosisSession } from '../lib/diagnosisSessionService';
 import { FotoNaoGuardadaError } from '../lib/imageHelper';
+import { normalizarFoto, type CapturaNativa } from '../lib/fotoNormalizada';
 
 /** Imagem mínima para o simulador de diagnóstico; só existe sob __DEV__. */
 const IMAGEM_MOCK =
@@ -126,6 +127,12 @@ export default function CameraScreen() {
     try {
       const foto = await photoOutput.capturePhoto({ flashMode: flash }, {});
       let caminho: string;
+      // Lidos antes do dispose(): depois dele o objeto nativo some.
+      const nativa: CapturaNativa = {
+        orientacao: foto.orientation,
+        larguraNativa: foto.width,
+        alturaNativa: foto.height,
+      };
       try {
         // A foto nasce em memória. saveToTemporaryFileAsync devolve caminho de
         // sistema de arquivos, sem o prefixo file:// — o resto do pipeline
@@ -136,7 +143,10 @@ export default function CameraScreen() {
         // runtime de JS pode demorar a liberá-la a ponto de esgotar recurso.
         foto.dispose();
       }
-      await analisar(`file://${caminho}`);
+      // Endireita e reduz antes de tudo: inferência, prévia, card, upload e
+      // segunda opinião usam esta imagem. Nunca lança.
+      const uriNormalizada = await normalizarFoto(`file://${caminho}`, nativa);
+      await analisar(uriNormalizada);
     } catch {
       console.error('[Camera] Falha ao capturar do sensor.');
       Toast.show({ type: 'error', text1: 'Erro de captura', text2: 'Não foi possível tirar a foto.' });
@@ -152,7 +162,7 @@ export default function CameraScreen() {
         quality: 0.9,
       });
       if (!resultado.canceled && resultado.assets?.[0]?.uri) {
-        await analisar(resultado.assets[0].uri);
+        await analisar(await normalizarFoto(resultado.assets[0].uri));
       }
     } catch {
       console.error('[Camera] Falha ao abrir a galeria.');
