@@ -24,6 +24,7 @@ import { resolveDiseaseName } from '../lib/diagnosisDetails';
 import { diagnosticoIncerto } from '../lib/confianca';
 import { startDiagnosisSession } from '../lib/diagnosisSessionService';
 import { FotoNaoGuardadaError } from '../lib/imageHelper';
+import { lerPosicaoDaCaptura, type Posicao } from '../lib/posicao';
 import { normalizarFoto, type CapturaNativa } from '../lib/fotoNormalizada';
 
 /** Imagem mínima para o simulador de diagnóstico; só existe sob __DEV__. */
@@ -44,6 +45,8 @@ interface Captura {
   uri: string;
   inference: InferenceResult;
   diseaseName: string;
+  /** Leitura disparada no toque; a confirmação espera por ela. */
+  posicao: Promise<Posicao | null>;
 }
 
 export default function CameraScreen() {
@@ -58,27 +61,19 @@ export default function CameraScreen() {
   const [etapa, setEtapa] = useState<Etapa>('VISOR');
   const [captura, setCaptura] = useState<Captura | null>(null);
   const [flash, setFlash] = useState<'off' | 'on'>('off');
-  const [gps, setGps] = useState<{ latitude: number; longitude: number } | null>(null);
   const [confirmando, setConfirmando] = useState(false);
   const [debugAberto, setDebugAberto] = useState(false);
 
   /** O obturador só faz sentido quando há permissão E sensor. */
   const podeCapturar = hasPermission && !!device;
 
+  // Só pede a permissão. A posição é lida na hora da captura: a câmera fica
+  // montada por baixo da conversa, e uma leitura da abertura valeria para a
+  // primeira foto e para nenhuma outra.
   useEffect(() => {
-    (async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') return;
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        setGps({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-      } catch (erro) {
-        // Sem leitura, o estado fica nulo e o diagnóstico é gravado sem
-        // posição: uma coordenada inventada viraria pino indistinguível de
-        // uma leitura real.
-        console.warn('[Camera] GPS indisponível; o diagnóstico será gravado sem posição.', erro);
-      }
-    })();
+    Location.requestForegroundPermissionsAsync().catch((erro) => {
+      console.warn('[Camera] Não foi possível pedir a permissão de localização.', erro);
+    });
   }, []);
 
   /**
@@ -87,12 +82,12 @@ export default function CameraScreen() {
    * campo, e cada tentativa persistida custaria uma sessão no histórico, um
    * PUT no S3 e uma chamada paga ao modelo.
    */
-  const analisar = useCallback(async (uri: string, alvoForcado?: string) => {
+  const analisar = useCallback(async (uri: string, posicao: Promise<Posicao | null>, alvoForcado?: string) => {
     setEtapa('ANALISANDO');
     try {
       const inference = await runImageInference(uri, alvoForcado);
       const diseaseName = await resolveDiseaseName(inference.diseaseId);
-      setCaptura({ uri, inference, diseaseName });
+      setCaptura({ uri, inference, diseaseName, posicao });
       setEtapa('CONFIRMACAO');
     } catch (err) {
       console.error('[Camera] Falha ao rodar a inferência local.', err);
@@ -124,6 +119,9 @@ export default function CameraScreen() {
       Toast.show({ type: 'error', text1: 'Câmera', text2: 'O visor ainda não inicializou.' });
       return;
     }
+    // Dispara no toque, sem esperar: o GPS corre enquanto a foto é salva,
+    // endireitada e analisada. lerPosicaoDaCaptura nunca lança.
+    const posicao = lerPosicaoDaCaptura();
     try {
       const foto = await photoOutput.capturePhoto({ flashMode: flash }, {});
       let caminho: string;
@@ -146,7 +144,7 @@ export default function CameraScreen() {
       // Endireita e reduz antes de tudo: inferência, prévia, card, upload e
       // segunda opinião usam esta imagem. Nunca lança.
       const uriNormalizada = await normalizarFoto(`file://${caminho}`, nativa);
-      await analisar(uriNormalizada);
+      await analisar(uriNormalizada, posicao);
     } catch {
       console.error('[Camera] Falha ao capturar do sensor.');
       Toast.show({ type: 'error', text1: 'Erro de captura', text2: 'Não foi possível tirar a foto.' });
@@ -162,7 +160,8 @@ export default function CameraScreen() {
         quality: 0.9,
       });
       if (!resultado.canceled && resultado.assets?.[0]?.uri) {
-        await analisar(await normalizarFoto(resultado.assets[0].uri));
+        // Foto da galeria pode ser de ontem e de outro lugar: sem posição.
+        await analisar(await normalizarFoto(resultado.assets[0].uri), Promise.resolve(null));
       }
     } catch {
       console.error('[Camera] Falha ao abrir a galeria.');
@@ -179,6 +178,7 @@ export default function CameraScreen() {
     if (!captura || confirmando) return;
     setConfirmando(true);
     try {
+      const gps = await captura.posicao;
       const { sessionId } = await startDiagnosisSession({
         imageUri: captura.uri,
         inference: captura.inference,
@@ -204,7 +204,7 @@ export default function CameraScreen() {
       });
       setConfirmando(false);
     }
-  }, [captura, confirmando, gps, connectionMode, router]);
+  }, [captura, confirmando, connectionMode, router]);
 
   if (etapa === 'ANALISANDO') {
     return (
@@ -413,7 +413,9 @@ export default function CameraScreen() {
                   style={[styles.debugOpcao, { borderLeftColor: caso.cor }]}
                   onPress={() => {
                     setDebugAberto(false);
-                    void analisar(IMAGEM_MOCK, caso.id);
+                    // Lê a posição como o obturador: é assim que o simulador alimenta o
+                    // mapa com a posição injetada no emulador.
+                    void analisar(IMAGEM_MOCK, lerPosicaoDaCaptura(), caso.id);
                   }}
                   accessibilityRole="button"
                   accessibilityLabel={caso.rotulo}
