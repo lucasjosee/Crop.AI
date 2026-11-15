@@ -14,7 +14,7 @@ import {
   ensureSession,
   findUnansweredUserMessage,
   getSession,
-  getSessionDiseaseId,
+  getSessionDiagnosis,
   listMapSessions,
   listMessages,
   listSessions,
@@ -101,10 +101,25 @@ describe('chatRepository', () => {
     expect(params).toContain('s1');
   });
 
-  it('getSessionDiseaseId lê o doenca_id do diagnóstico de origem', async () => {
-    mocks.execute.mockResolvedValueOnce(rows([{ doenca_id: 'uuid-doenca' }]));
-    expect(await getSessionDiseaseId('s1')).toBe('uuid-doenca');
-    expect(mocks.execute.mock.calls[0][0]).toContain('JOIN fila_diagnosticos');
+  it('getSessionDiagnosis lê o cvResult do anexo (inclusive Fitotoxicidade) e o status da fila', async () => {
+    const anexo = JSON.stringify({
+      imageUri: 'file:///a.jpg',
+      cvResult: { diseaseId: 'Fitotoxicidade', confidence: 0.4 },
+    });
+    mocks.execute.mockResolvedValueOnce(
+      rows([{ attachment_json: anexo, cross_validation_status: 'SKIPPED' }])
+    );
+    expect(await getSessionDiagnosis('s1')).toEqual({
+      diseaseId: 'Fitotoxicidade',
+      confidence: 0.4,
+      crossValidationStatus: 'SKIPPED',
+    });
+    expect(mocks.execute.mock.calls[0][0]).toContain('fila_diagnosticos');
+  });
+
+  it('getSessionDiagnosis dá null para sessão sem foto', async () => {
+    mocks.execute.mockResolvedValueOnce(rows([{ attachment_json: null, cross_validation_status: null }]));
+    expect(await getSessionDiagnosis('livre')).toBeNull();
   });
 
   it('findUnansweredUserMessage devolve a última mensagem se for do usuário com foto', async () => {

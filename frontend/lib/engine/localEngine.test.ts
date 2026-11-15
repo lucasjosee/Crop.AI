@@ -120,6 +120,25 @@ describe('LocalEngine', () => {
       expect(last.content).toContain('Apresente o diagnóstico');
     });
 
+    it('com foto de confiança baixa, o preâmbulo pede outra foto e proíbe defensivo e dosagem', async () => {
+      const cb = callbacks();
+      engine.respond(
+        {
+          sessionId: 's', history: [], userMessage: '', catalogContext: 'CTX',
+          attachment: { imageUri: 'file:///f.jpg', diseaseName: 'Mancha Parda',
+            cvResult: { diseaseId: 'u', confidence: 0.16, inferenceTimeMs: 40, modelUsed: 'm' } },
+        },
+        cb, new AbortController().signal
+      );
+      await vi.waitFor(() => expect(cb.onDone).toHaveBeenCalled());
+
+      const content = mocks.slmChat.mock.calls[0][0].messages.at(-1).content;
+      expect(content).toContain('16%');
+      expect(content).toContain('outra foto');
+      expect(content).toContain('não indique defensivo nem dosagem');
+      expect(content).not.toContain('Apresente o diagnóstico');
+    });
+
     it('sem nome da doença, refere-se à doença descrita no contexto', async () => {
       const cb = callbacks();
       engine.respond(

@@ -1,4 +1,6 @@
 import { dbDriver } from '../db/sqlite';
+import { LIMIAR_CONFIANCA, diagnosticoIncerto } from './confianca';
+import type { SessionDiagnosis } from './chatRepository';
 
 /**
  * Orçamento do contexto. A SLM roda com n_ctx: 2048; precisa sobrar para o
@@ -13,6 +15,8 @@ export const MAX_DEFENSIVOS = 3;
 export const MAX_FIELD_CHARS = 200;
 
 const SAUDAVEL = 'Planta saudável. Nenhum tratamento necessário.';
+const SAUDAVEL_INCERTO =
+  'Análise inconclusiva: o modelo de visão não teve confiança suficiente para dizer que a planta está sadia. Não afirme que a planta está saudável; peça outra foto, com a folha centralizada e boa luz, ou a descrição dos sintomas.';
 const FITOTOXICIDADE =
   'Dano abiótico por fitotoxicidade — não é doença. Não há defensivo indicado; avaliar histórico de aplicações recentes.';
 
@@ -31,9 +35,28 @@ function parseBula(raw: unknown): { modo_de_acao?: string; epoca_aplicacao?: str
   }
 }
 
-export async function buildCatalogContext(diseaseId: string | null): Promise<string> {
-  if (!diseaseId || diseaseId === 'Saudável') return SAUDAVEL;
-  if (diseaseId === 'Fitotoxicidade') return FITOTOXICIDADE;
+function alertaIncerto(nome: string, confianca: number): string {
+  return `ATENÇÃO, diagnóstico incerto: o modelo de visão sugeriu ${nome} com ${Math.round(confianca * 100)}% de confiança, abaixo do limiar de ${Math.round(LIMIAR_CONFIANCA * 100)}%. Trate como hipótese, peça outra foto ou mais sintomas e não indique defensivo nem dosagem.`;
+}
+
+/**
+ * Contexto do catálogo para os dois motores.
+ *
+ * `null` é conversa livre: não há diagnóstico, então o contexto é vazio. Nunca
+ * afirma saúde sem base (invariante do app). Diagnóstico incerto leva o alerta
+ * e não traz os defensivos, para que nem a dose chegue ao motor.
+ */
+export async function buildCatalogContext(diagnostico: SessionDiagnosis | null): Promise<string> {
+  if (!diagnostico) return '';
+  const { diseaseId } = diagnostico;
+  const incerto = diagnosticoIncerto(diagnostico.confidence, diagnostico.crossValidationStatus);
+
+  if (diseaseId === 'Saudável') return incerto ? SAUDAVEL_INCERTO : SAUDAVEL;
+  if (diseaseId === 'Fitotoxicidade') {
+    return incerto
+      ? [alertaIncerto('Fitotoxicidade', diagnostico.confidence), FITOTOXICIDADE].join('\n')
+      : FITOTOXICIDADE;
+  }
 
   const res = await dbDriver.execute(
     `SELECT d.nome_comum, d.nome_cientifico, d.sintomas, d.nivel_severidade, d.causa,
@@ -53,11 +76,14 @@ export async function buildCatalogContext(diseaseId: string | null): Promise<str
 
   const d = rows[0];
   const lines: string[] = [
+    ...(incerto ? [alertaIncerto(d.nome_comum, diagnostico.confidence)] : []),
     `Doença: ${d.nome_comum}${d.nome_cientifico ? ` (${d.nome_cientifico})` : ''}`,
     `Causa: ${d.causa ?? 'não informada'} · Severidade: ${d.nivel_severidade ?? '?'}/5`,
     `Sintomas: ${d.sintomas ?? ''}`,
     '',
   ];
+
+  if (incerto) return lines.join('\n').trimEnd();
 
   const defensivos = rows.filter((r) => r.nome_comercial);
   if (defensivos.length === 0) {

@@ -21,7 +21,7 @@ import {
   ensureSession,
   findUnansweredUserMessage,
   getSession,
-  getSessionDiseaseId,
+  getSessionDiagnosis,
   listMessages,
   SESSAO_NOVA,
   updateMessageAttachment,
@@ -122,10 +122,10 @@ export default function ChatSessionScreen() {
       store.limparDesfecho(alvo);
 
       const history = (await listMessages(alvo)).filter((m) => m.id !== userMessage.id);
-      const diseaseId = userMessage.attachment?.cvResult.diseaseId ?? (await getSessionDiseaseId(alvo));
+      const diagnostico = await getSessionDiagnosis(alvo);
       let catalogContext = '';
       try {
-        catalogContext = await buildCatalogContext(diseaseId);
+        catalogContext = await buildCatalogContext(diagnostico);
       } catch (err) {
         console.warn('[Chat] Falha ao montar o contexto do catálogo; seguindo sem ele.', err);
       }
