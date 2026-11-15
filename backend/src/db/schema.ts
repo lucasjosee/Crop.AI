@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   pgEnum,
   customType,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
 // ---------------------------------------------------------
@@ -68,6 +69,10 @@ export const refreshTokens = pgTable(
     deviceInfo: text('device_info'),
     expiresAt: timestamp('expires_at').notNull(),
     revokedAt: timestamp('revoked_at'),
+    // Token que substituiu este na rotação (ADR 0006). Logout e revogação geral não preenchem.
+    replacedById: uuid('replaced_by_id').references((): AnyPgColumn => refreshTokens.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [
