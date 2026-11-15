@@ -8,6 +8,8 @@ export default defineConfig({
     // Integration tests share a real PostgreSQL instance — must run serially
     // to avoid FK constraint violations from concurrent db.delete(usuarios).
     fileParallelism: false,
+    // Aborta antes de qualquer teste se DATABASE_URL não for de um banco de teste.
+    globalSetup: ['./src/test-support/guarda-banco.ts'],
     exclude: ['dist/**', 'node_modules/**'],
   },
 });
