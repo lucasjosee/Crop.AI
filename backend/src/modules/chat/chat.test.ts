@@ -20,7 +20,7 @@ class MockLLMProvider implements LLMProvider {
     this.lastSystemPrompt = systemPrompt;
     await callbacks.onChunk('Resposta ');
     await callbacks.onChunk('de teste.');
-    callbacks.onDone(10);
+    callbacks.onDone({ tokensEntrada: 4, tokensSaida: 6 });
   }
 }
 
@@ -43,7 +43,7 @@ describe('ChatService', () => {
       { sub: 'user-123', role: 'PRODUTOR' },
       {
         onChunk: async (chunk) => { chunks.push(chunk); },
-        onDone: (tokens) => { tokensUsed = tokens; },
+        onDone: (uso) => { tokensUsed = uso.tokensEntrada + uso.tokensSaida; },
       }
     );
 

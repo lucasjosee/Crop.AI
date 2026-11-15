@@ -5,7 +5,20 @@ import { ClaudeProvider } from './claude.provider';
 
 export interface StreamCallbacks {
   onChunk: (text: string) => Promise<void> | void;
-  onDone: (tokensUsed: number) => void;
+  onDone: (uso: LLMUsage) => void;
+}
+
+/** Uso medido pelo provedor. No Gemini a saída inclui o raciocínio. */
+export interface LLMUsage {
+  tokensEntrada: number;
+  tokensSaida: number;
+}
+
+export interface StreamOptions {
+  /** Aborta a geração: o cliente saiu ou o teto de tempo estourou. */
+  signal?: AbortSignal;
+  /** Foto anexada à mensagem do usuário. */
+  imagem?: LLMImageInput;
 }
 
 export interface LLMMessage {
@@ -23,7 +36,8 @@ export interface LLMProvider {
     systemPrompt: string,
     history: LLMMessage[],
     userMessage: string,
-    callbacks: StreamCallbacks
+    callbacks: StreamCallbacks,
+    opcoes?: StreamOptions
   ): Promise<void>;
   analyzeImage(
     systemPrompt: string,

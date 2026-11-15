@@ -43,14 +43,14 @@ describe('chatController.stream', () => {
 
   it('termina com done quando o close do request sai depois de o corpo ser lido', async () => {
     const { request, reply, requestRaw, replyRaw } = montar();
-    mocks.stream.mockImplementation(async (_i: unknown, _u: unknown, cb: { onChunk: (t: string) => Promise<void>; onDone: (n: number) => void }) => {
+    mocks.stream.mockImplementation(async (_i: unknown, _u: unknown, cb: { onChunk: (t: string) => Promise<void>; onDone: (u: { tokensEntrada: number; tokensSaida: number }) => void }) => {
       // No Node >= 16 o IncomingMessage emite close ao fim da leitura do corpo,
       // com o cliente ainda conectado.
       requestRaw.emit('close');
       await cb.onChunk('a');
       await tick();
       await cb.onChunk('b');
-      cb.onDone(7);
+      cb.onDone({ tokensEntrada: 3, tokensSaida: 4 });
     });
 
     await chatController.stream(request, reply);
@@ -62,10 +62,10 @@ describe('chatController.stream', () => {
 
   it('para de escrever quando o cliente fecha a resposta antes do fim', async () => {
     const { request, reply, replyRaw } = montar();
-    mocks.stream.mockImplementation(async (_i: unknown, _u: unknown, cb: { onChunk: (t: string) => Promise<void>; onDone: (n: number) => void }) => {
+    mocks.stream.mockImplementation(async (_i: unknown, _u: unknown, cb: { onChunk: (t: string) => Promise<void>; onDone: (u: { tokensEntrada: number; tokensSaida: number }) => void }) => {
       replyRaw.emit('close'); // writableFinished segue false: o cliente caiu
       await cb.onChunk('a');
-      cb.onDone(3);
+      cb.onDone({ tokensEntrada: 1, tokensSaida: 2 });
     });
 
     await chatController.stream(request, reply);

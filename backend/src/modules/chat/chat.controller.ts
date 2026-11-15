@@ -51,8 +51,8 @@ export const chatController = {
           if (aborted) return;
           reply.raw.write(`data: ${JSON.stringify({ chunk: text })}\n\n`);
         },
-        onDone: (tokens: number) => {
-          tokensUsed = tokens;
+        onDone: (uso) => {
+          tokensUsed = uso.tokensEntrada + uso.tokensSaida;
         },
       });
 
