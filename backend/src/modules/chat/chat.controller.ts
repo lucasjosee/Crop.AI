@@ -2,7 +2,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { ChatService } from './chat.service';
 import { chatStreamInputSchema } from './chat.schema';
-import { AppError } from '../../shared/errors';
+import { AppError, ValidationError } from '../../shared/errors';
 import { resolveAllowedOrigin } from '../../config/cors';
 
 const chatService = new ChatService();
@@ -11,6 +11,12 @@ export const chatController = {
   stream: async (request: FastifyRequest, reply: FastifyReply) => {
     const parsed = chatStreamInputSchema.parse(request.body);
     const user = request.user as { sub: string; role: string };
+
+    // Fronteira de posse da foto, antes de a resposta virar stream: assim o
+    // erro sai como 400 normal. É a mesma regra da segunda opinião.
+    if (parsed.image_s3_key && !parsed.image_s3_key.startsWith(`diagnosticos/${user.sub}/`)) {
+      throw new ValidationError('A imagem não pertence ao usuário autenticado.');
+    }
 
     // Hijack the response to write SSE manually
     reply.hijack();

@@ -139,20 +139,20 @@ describe('ChatService: erro, cancelamento e teto', () => {
   });
 
   it('o sinal do chamador chega ao provedor, e a geração cancelada não é logada como falha', async () => {
+    const chamador = new AbortController();
     const provider = new MockLLMProvider();
     provider.stream = async (_s, _h, _m, _c, opcoes) => {
-      await new Promise((_, rejeita) =>
-        opcoes?.signal?.addEventListener('abort', () => rejeita(new Error('abortado')))
-      );
+      await new Promise((_, rejeita) => {
+        opcoes?.signal?.addEventListener('abort', () => rejeita(new Error('abortado')));
+        chamador.abort(); // o cliente sai com a geração em andamento
+      });
     };
-    const chamador = new AbortController();
     const log = semLog();
 
     const promessa = new ChatService(provider).stream(input, USUARIO, SEM_CALLBACKS, {
       log,
       signal: chamador.signal,
     });
-    chamador.abort();
 
     await expect(promessa).rejects.toBeInstanceOf(AppError);
     expect(log.error).not.toHaveBeenCalled();
@@ -171,6 +171,38 @@ describe('ChatService: erro, cancelamento e teto', () => {
     ).rejects.toMatchObject({ statusCode: 504, code: 'LLM_TIMEOUT' });
 
     expect(sinal?.aborted).toBe(true);
+  });
+});
+
+describe('ChatService: foto do diagnóstico', () => {
+  const comFoto = { session_id: SESSAO, message: 'O que é isso?', history: [], image_s3_key: 'diagnosticos/user-1/a.jpg' };
+  const IMAGEM = { dataBase64: 'AAAA', mimeType: 'image/jpeg' as const };
+
+  it('entrega a imagem ao provedor e avisa no prompt de sistema', async () => {
+    const provider = new MockLLMProvider();
+    const load = vi.fn().mockResolvedValue(IMAGEM);
+
+    await new ChatService(provider, { imageLoader: { load } }).stream(
+      comFoto, USUARIO, SEM_CALLBACKS, { log: semLog() }
+    );
+
+    expect(load).toHaveBeenCalledWith('diagnosticos/user-1/a.jpg');
+    expect(provider.lastOptions?.imagem).toEqual(IMAGEM);
+    expect(provider.lastSystemPrompt).toContain('foto da folha está anexada');
+  });
+
+  it('se a imagem não carrega, a conversa segue sem ela e o erro é registrado', async () => {
+    const provider = new MockLLMProvider();
+    const falha = new Error('S3 fora do ar');
+    const log = semLog();
+
+    await new ChatService(provider, { imageLoader: { load: vi.fn().mockRejectedValue(falha) } }).stream(
+      comFoto, USUARIO, SEM_CALLBACKS, { log }
+    );
+
+    expect(provider.lastOptions?.imagem).toBeUndefined();
+    expect(provider.lastSystemPrompt).not.toContain('foto da folha está anexada');
+    expect(log.error).toHaveBeenCalledWith(expect.objectContaining({ err: falha }), expect.any(String));
   });
 });
 

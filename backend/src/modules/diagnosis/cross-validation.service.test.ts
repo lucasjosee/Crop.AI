@@ -10,10 +10,8 @@ import type {
   PersistedDiagnostic,
 } from './cross-validation.repository';
 import { crossValidationInputSchema } from './cross-validation.schema';
-import {
-  CrossValidationService,
-  type DiagnosticImageLoader,
-} from './cross-validation.service';
+import { CrossValidationService } from './cross-validation.service';
+import type { DiagnosticImageLoader } from '../../shared/diagnostic-image-loader';
 
 const input = {
   diagnostic_local_id: '00000000-0000-4000-8000-000000000001',

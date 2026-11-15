@@ -11,10 +11,8 @@ import type {
 } from '../chat/providers/llm.provider';
 import { SyncService } from '../sync/sync.service';
 import { DrizzleCrossValidationRepository } from './cross-validation.repository';
-import {
-  CrossValidationService,
-  type DiagnosticImageLoader,
-} from './cross-validation.service';
+import { CrossValidationService } from './cross-validation.service';
+import type { DiagnosticImageLoader } from '../../shared/diagnostic-image-loader';
 
 class MockProvider implements LLMProvider {
   analyzeImage = vi.fn<LLMProvider['analyzeImage']>();
