@@ -9,7 +9,7 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import * as ImagePicker from 'expo-image-picker';
@@ -51,6 +51,8 @@ interface Captura {
 
 export default function CameraScreen() {
   const router = useRouter();
+  // A câmera fica montada por baixo da conversa; sem isto o sensor continua ligado.
+  const emFoco = useIsFocused();
   const { connectionMode } = useNetworkStore();
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
@@ -145,8 +147,8 @@ export default function CameraScreen() {
       // segunda opinião usam esta imagem. Nunca lança.
       const uriNormalizada = await normalizarFoto(`file://${caminho}`, nativa);
       await analisar(uriNormalizada, posicao);
-    } catch {
-      console.error('[Camera] Falha ao capturar do sensor.');
+    } catch (erro) {
+      console.error('[Camera] Falha ao capturar do sensor.', erro);
       Toast.show({ type: 'error', text1: 'Erro de captura', text2: 'Não foi possível tirar a foto.' });
     }
   }, [analisar, device, flash, hasPermission, photoOutput]);
@@ -163,8 +165,8 @@ export default function CameraScreen() {
         // Foto da galeria pode ser de ontem e de outro lugar: sem posição.
         await analisar(await normalizarFoto(resultado.assets[0].uri), Promise.resolve(null));
       }
-    } catch {
-      console.error('[Camera] Falha ao abrir a galeria.');
+    } catch (erro) {
+      console.error('[Camera] Falha ao abrir a galeria.', erro);
       Toast.show({ type: 'error', text1: 'Galeria', text2: 'Não foi possível acessar as fotos.' });
     }
   }, [analisar]);
@@ -341,7 +343,7 @@ export default function CameraScreen() {
             <Camera
               style={StyleSheet.absoluteFill}
               device={device}
-              isActive={true}
+              isActive={emFoco && etapa === 'VISOR'}
               outputs={[photoOutput]}
             />
             <View style={styles.guia} pointerEvents="none">
