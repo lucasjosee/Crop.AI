@@ -469,7 +469,7 @@ const styles = StyleSheet.create({
   analisar: { flex: 1 },
   repetirCheio: { flex: 1 },
   // O secundário padrão tem texto escuro e fundo transparente: ilegível sobre a foto.
-  analisarSecundario: { borderColor: '#FFFFFF' },
+  analisarSecundario: { borderColor: '#FFFFFF', backgroundColor: 'rgba(0,0,0,0.5)' },
   analisarSecundarioTexto: { color: '#FFFFFF' },
 
   barraTopo: { flexDirection: 'row', justifyContent: 'space-between', padding: theme.spacing.md },
