@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ChatService } from './chat.service';
+import { ChatService, type ChatLogger } from './chat.service';
+import { AppError } from '../../shared/errors';
 import { chatStreamInputSchema } from './chat.schema';
-import { LLMProvider, LLMMessage, StreamCallbacks } from './providers/llm.provider';
+import { LLMProvider, LLMMessage, StreamCallbacks, StreamOptions } from './providers/llm.provider';
 
 // Mock LLM Provider that returns predictable chunks
 class MockLLMProvider implements LLMProvider {
   lastSystemPrompt = '';
+  lastOptions: StreamOptions | undefined;
 
   async analyzeImage(): Promise<string> {
     return '{}';
@@ -15,14 +17,21 @@ class MockLLMProvider implements LLMProvider {
     systemPrompt: string,
     _history: LLMMessage[],
     userMessage: string,
-    callbacks: StreamCallbacks
+    callbacks: StreamCallbacks,
+    opcoes?: StreamOptions
   ): Promise<void> {
     this.lastSystemPrompt = systemPrompt;
+    this.lastOptions = opcoes;
     await callbacks.onChunk('Resposta ');
     await callbacks.onChunk('de teste.');
     callbacks.onDone({ tokensEntrada: 4, tokensSaida: 6 });
   }
 }
+
+const semLog = (): ChatLogger => ({ error: vi.fn(), info: vi.fn() });
+const SESSAO = '00000000-0000-4000-8000-000000000001';
+const USUARIO = { sub: 'user-1', role: 'PRODUTOR' };
+const SEM_CALLBACKS = { onChunk: async () => {}, onDone: () => {} };
 
 describe('ChatService', () => {
   let service: ChatService;
@@ -44,7 +53,8 @@ describe('ChatService', () => {
       {
         onChunk: async (chunk) => { chunks.push(chunk); },
         onDone: (uso) => { tokensUsed = uso.tokensEntrada + uso.tokensSaida; },
-      }
+      },
+      { log: semLog() }
     );
 
     expect(chunks).toEqual(['Resposta ', 'de teste.']);
@@ -63,7 +73,8 @@ describe('ChatService', () => {
         catalog_context: 'Doença: Ferrugem Asiática\nDefensivos indicados:\n1. Produto X',
       },
       { sub: 'user-1', role: 'PRODUTOR' },
-      { onChunk: async () => {}, onDone: () => {} }
+      { onChunk: async () => {}, onDone: () => {} },
+      { log: semLog() }
     );
 
     const systemPrompt = provider.lastSystemPrompt;
@@ -85,7 +96,8 @@ describe('ChatService', () => {
         cv_result: { doenca_id: '00000000-0000-4000-8000-000000000010', doenca_nome: 'Ferrugem Asiática', confianca: 0.92, modelo_usado: 'tflite' },
       },
       { sub: 'user-1', role: 'PRODUTOR' },
-      { onChunk: async () => {}, onDone: () => {} }
+      { onChunk: async () => {}, onDone: () => {} },
+      { log: semLog() }
     );
 
     expect(provider.lastSystemPrompt).toContain('O modelo de visão local identificou Ferrugem Asiática com 92% de confiança.');
@@ -98,11 +110,67 @@ describe('ChatService', () => {
     await service.stream(
       { session_id: '00000000-0000-4000-8000-000000000001', message: 'Oi', history: [] },
       { sub: 'user-1', role: 'PRODUTOR' },
-      { onChunk: async () => {}, onDone: () => {} }
+      { onChunk: async () => {}, onDone: () => {} },
+      { log: semLog() }
     );
 
     expect(provider.lastSystemPrompt).not.toContain('[Contexto do Catálogo]');
     expect(provider.lastSystemPrompt).not.toContain('modelo de visão local');
+  });
+});
+
+describe('ChatService: erro, cancelamento e teto', () => {
+  const input = { session_id: SESSAO, message: 'Oi', history: [] };
+
+  it('registra o erro do provedor e devolve LLM_UNAVAILABLE', async () => {
+    const falha = new Error('API key not valid');
+    const provider = new MockLLMProvider();
+    provider.stream = async () => { throw falha; };
+    const log = semLog();
+
+    await expect(
+      new ChatService(provider).stream(input, USUARIO, SEM_CALLBACKS, { log })
+    ).rejects.toMatchObject({ statusCode: 502, code: 'LLM_UNAVAILABLE' });
+
+    expect(log.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: falha, provedor: expect.any(String), modelo: expect.any(String) }),
+      expect.any(String)
+    );
+  });
+
+  it('o sinal do chamador chega ao provedor, e a geração cancelada não é logada como falha', async () => {
+    const provider = new MockLLMProvider();
+    provider.stream = async (_s, _h, _m, _c, opcoes) => {
+      await new Promise((_, rejeita) =>
+        opcoes?.signal?.addEventListener('abort', () => rejeita(new Error('abortado')))
+      );
+    };
+    const chamador = new AbortController();
+    const log = semLog();
+
+    const promessa = new ChatService(provider).stream(input, USUARIO, SEM_CALLBACKS, {
+      log,
+      signal: chamador.signal,
+    });
+    chamador.abort();
+
+    await expect(promessa).rejects.toBeInstanceOf(AppError);
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
+  it('ao estourar o teto, aborta o sinal do provedor e lança LLM_TIMEOUT', async () => {
+    let sinal: AbortSignal | undefined;
+    const provider = new MockLLMProvider();
+    provider.stream = async (_s, _h, _m, _c, opcoes) => {
+      sinal = opcoes?.signal;
+      await new Promise(() => {}); // nunca responde
+    };
+
+    await expect(
+      new ChatService(provider, { timeoutMs: 20 }).stream(input, USUARIO, SEM_CALLBACKS, { log: semLog() })
+    ).rejects.toMatchObject({ statusCode: 504, code: 'LLM_TIMEOUT' });
+
+    expect(sinal?.aborted).toBe(true);
   });
 });
 

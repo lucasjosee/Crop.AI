@@ -39,8 +39,14 @@ export const chatController = {
     // terminou. O close do IncomingMessage (request.raw) não serve: no Node >= 16
     // ele sai quando o corpo termina de ser lido, com o cliente conectado, e
     // descartava a resposta inteira sem nem fechar o stream.
+    // O provedor continuaria gerando (e cobrando) sem alguém ouvindo, então a
+    // desconexão também cancela a geração.
+    const cancelamento = new AbortController();
     reply.raw.on('close', () => {
-      if (!reply.raw.writableFinished) aborted = true;
+      if (!reply.raw.writableFinished) {
+        aborted = true;
+        cancelamento.abort();
+      }
     });
 
     let tokensUsed = 0;
@@ -54,7 +60,7 @@ export const chatController = {
         onDone: (uso) => {
           tokensUsed = uso.tokensEntrada + uso.tokensSaida;
         },
-      });
+      }, { log: request.log, signal: cancelamento.signal });
 
       if (!aborted) {
         reply.raw.end(

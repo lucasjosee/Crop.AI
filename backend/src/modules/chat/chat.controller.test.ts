@@ -73,4 +73,18 @@ describe('chatController.stream', () => {
     expect(replyRaw.write).not.toHaveBeenCalled();
     expect(replyRaw.end).not.toHaveBeenCalled();
   });
+
+  it('aborta o sinal entregue ao serviço quando o cliente fecha a resposta', async () => {
+    const { request, reply, replyRaw } = montar();
+    let sinal: AbortSignal | undefined;
+    mocks.stream.mockImplementation(async (_i: unknown, _u: unknown, _cb: unknown, ctx: { signal: AbortSignal }) => {
+      sinal = ctx.signal;
+      expect(sinal.aborted).toBe(false);
+      replyRaw.emit('close');
+    });
+
+    await chatController.stream(request, reply);
+
+    expect(sinal?.aborted).toBe(true);
+  });
 });
