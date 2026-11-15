@@ -259,6 +259,18 @@ describe('CloudEngine', () => {
     expect(cb.onError).toHaveBeenCalledWith(expected);
   });
 
+  it('429 com DAILY_QUOTA_EXCEEDED no corpo vira QUOTA_EXCEEDED, sem confundir com o excesso momentâneo', async () => {
+    const cb = callbacks();
+    engine.respond(baseInput(), cb, new AbortController().signal);
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    // O react-native-sse entrega o corpo da resposta como texto em `message`.
+    const corpo = JSON.stringify({ error: { code: 'DAILY_QUOTA_EXCEEDED', message: 'x', details: [] } });
+    FakeEventSource.last().emit('error', { type: 'error', xhrStatus: 429, xhrState: 4, message: corpo });
+
+    expect(cb.onError).toHaveBeenCalledWith('QUOTA_EXCEEDED');
+  });
+
   it('em 401 renova o token pelo mutex compartilhado e tenta uma vez mais', async () => {
     const cb = callbacks();
     engine.respond(baseInput(), cb, new AbortController().signal);

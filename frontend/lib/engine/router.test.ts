@@ -188,7 +188,7 @@ describe('EngineRouter', () => {
       expect(local.respond).not.toHaveBeenCalled();
     });
 
-    it.each(['RATE_LIMITED', 'TOKEN_EXPIRED', 'ABORTED', 'UNKNOWN'] as const)(
+    it.each(['RATE_LIMITED', 'QUOTA_EXCEEDED', 'TOKEN_EXPIRED', 'ABORTED', 'UNKNOWN'] as const)(
       '%s nunca é fallback',
       (error) => {
         const local = fakeEngine('LOCAL', true);
