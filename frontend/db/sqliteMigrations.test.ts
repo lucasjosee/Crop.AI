@@ -155,8 +155,8 @@ describe('migração v8 — fila de conversas assume o sync', () => {
     expect(sql().some((s) => s.includes('PRAGMA user_version = 8'))).toBe(true);
   });
 
-  it('não roda a v9 num banco que já está na 9', async () => {
-    const { driver, sql } = recordingDriver(9);
+  it('não roda a v10 num banco que já está na 10', async () => {
+    const { driver, sql } = recordingDriver(10);
 
     await runMigrationsAndSeed(driver as never);
 
@@ -208,5 +208,20 @@ describe('migração v9 — conversas vazias', () => {
 
     const del = sql().find((s) => s.includes('DELETE FROM chat_sessions'));
     expect(del).toContain("IN ('PENDING', 'FAILED')");
+  });
+});
+
+describe('migração v10 — doença desativada fica inativa', () => {
+  it('acrescenta is_active a doencas, com default 1, e grava a versão 10', async () => {
+    const { driver, sql } = recordingDriver(9);
+
+    await runMigrationsAndSeed(driver as never);
+
+    // Num banco já na v9 só a v10 roda: nada além da sondagem e dos dois comandos.
+    expect(sql()).toEqual([
+      'PRAGMA user_version;',
+      'ALTER TABLE doencas ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;',
+      'PRAGMA user_version = 10;',
+    ]);
   });
 });

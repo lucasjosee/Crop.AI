@@ -1,0 +1,35 @@
+{
+  "rota": "POST /api/v1/sync/feedback",
+  "casos": [
+    {
+      "nome": "feedback positivo de diagnóstico já sincronizado",
+      "corpo": {
+        "feedbacks": [
+          {
+            "diagnostic_server_id": "66666666-6666-4666-8666-666666666666",
+            "diagnostic_local_id": "11111111-1111-4111-8111-111111111111",
+            "timestamp_feedback": "2026-07-20T13:00:00.000Z",
+            "is_correct": true,
+            "user_correction_notes": null,
+            "corrected_doenca_id": null
+          }
+        ]
+      }
+    },
+    {
+      "nome": "correção do produtor com diagnóstico ainda sem server_id",
+      "corpo": {
+        "feedbacks": [
+          {
+            "diagnostic_server_id": null,
+            "diagnostic_local_id": "44444444-4444-4444-8444-444444444444",
+            "timestamp_feedback": "2026-07-21T10:00:00.000Z",
+            "is_correct": false,
+            "user_correction_notes": "As manchas surgiram só nas folhas de baixo.",
+            "corrected_doenca_id": "77777777-7777-4777-8777-777777777777"
+          }
+        ]
+      }
+    }
+  ]
+}

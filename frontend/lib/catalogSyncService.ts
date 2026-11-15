@@ -23,7 +23,12 @@ interface CatalogSyncPage {
 async function applyUpdates(updates: CatalogSyncPage['updates']): Promise<void> {
   for (const c of updates.culturas ?? []) {
     if (c.action === 'delete') {
-      await dbDriver.execute('DELETE FROM culturas WHERE id = ?;', [c.id]);
+      // Cultura referenciada por alguma doença fica: a FK recusaria o DELETE, e
+      // a doença (mesmo inativa) ainda precisa dela.
+      await dbDriver.execute(
+        'DELETE FROM culturas WHERE id = ? AND NOT EXISTS (SELECT 1 FROM doencas WHERE id_cultura = culturas.id);',
+        [c.id]
+      );
     } else {
       await dbDriver.execute(
         'INSERT OR REPLACE INTO culturas (id, nome, estagio_fenologico_padrao) VALUES (?, ?, ?);',
@@ -35,10 +40,12 @@ async function applyUpdates(updates: CatalogSyncPage['updates']): Promise<void> 
   for (const d of updates.doencas ?? []) {
     if (d.action === 'delete') {
       await dbDriver.execute('DELETE FROM doenca_defensivo WHERE id_doenca = ?;', [d.id]);
-      await dbDriver.execute('DELETE FROM doencas WHERE id = ?;', [d.id]);
+      // Desativa, nunca apaga: diagnósticos, feedbacks e conversas locais
+      // referenciam a doença por FK e ainda precisam do nome e dos sintomas.
+      await dbDriver.execute('UPDATE doencas SET is_active = 0 WHERE id = ?;', [d.id]);
     } else {
       await dbDriver.execute(
-        'INSERT OR REPLACE INTO doencas (id, id_cultura, nome_comum, nome_cientifico, sintomas, nivel_severidade, causa) VALUES (?, ?, ?, ?, ?, ?, ?);',
+        'INSERT OR REPLACE INTO doencas (id, id_cultura, nome_comum, nome_cientifico, sintomas, nivel_severidade, causa, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, 1);',
         [
           d.data.id,
           d.data.id_cultura,

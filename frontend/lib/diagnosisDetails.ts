@@ -191,10 +191,10 @@ export async function loadDiagnosisDetails(attachment: ChatAttachment): Promise<
   return { doenca, defensivos, crossValidation, feedbackJaEnviado };
 }
 
-/** Serve à correção do produtor (RF06) e à tela `/catalogo`; carregada sob demanda. */
+/** Só as ativas: a desativada fica no aparelho para os diagnósticos antigos, mas não é oferecida. Serve à correção do produtor (RF06) e à tela `/catalogo`; carregada sob demanda. */
 export async function listCatalogDiseases(): Promise<CatalogDisease[]> {
   const res = await dbDriver.execute(
-    'SELECT id, nome_comum, nome_cientifico, sintomas, nivel_severidade FROM doencas ORDER BY nome_comum;'
+    'SELECT id, nome_comum, nome_cientifico, sintomas, nivel_severidade FROM doencas WHERE is_active = 1 ORDER BY nome_comum;'
   );
   return (res.rows._array as Array<Record<string, any>>).map((r) => ({
     id: r.id,

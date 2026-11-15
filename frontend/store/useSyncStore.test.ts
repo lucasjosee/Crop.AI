@@ -11,12 +11,16 @@ const mocks = vi.hoisted(() => {
     rows: { _array: arr, length: arr.length, item: (i: number) => arr[i] },
     rowsAffected: 0,
   });
+  // O filtro de status e o COUNT são do SQL e não rodam neste fake; quem os
+  // prova é useSyncStore.sqlite.test.ts. Aqui o fake só devolve `n`.
   const execute = vi.fn(async (sql: string) => {
     const s = sql.trim().toLowerCase();
-    // A contagem de conversas não é `select * from <tabela>`: ela filtra no SQL.
-    if (s.includes('from chat_sessions')) return wrap([...tables.chat_sessions]);
-    const m = s.match(/^select \* from (\w+)/);
-    if (m) return wrap([...tables[m[1]]]);
+    if (s.includes('from chat_sessions')) return wrap([{ n: tables.chat_sessions.length }]);
+    const m = s.match(/^select count\(\*\) as n from (\w+) where sync_status in \('pending', 'failed'\)/);
+    if (m) {
+      const n = tables[m[1]].filter((r) => ['PENDING', 'FAILED'].includes(r.sync_status)).length;
+      return wrap([{ n }]);
+    }
     return wrap([]);
   });
   return { tables, execute };
@@ -31,6 +35,7 @@ vi.mock('../lib/syncService', () => ({
     conversations: { synced: 0, failed: 0 },
     secondOpinions: { synced: 0, failed: 0 },
     catalogUpdated: false,
+    falhas: [],
   })),
 }));
 
@@ -84,6 +89,7 @@ describe('useSyncStore', () => {
           conversations: { synced: 0, failed: 0 },
           secondOpinions: { synced: 0, failed: 0 },
           catalogUpdated: false,
+          falhas: [],
         });
       })
     );
@@ -96,6 +102,23 @@ describe('useSyncStore', () => {
     await Promise.all([first, second]);
 
     expect(vi.mocked(runFullSync)).toHaveBeenCalledTimes(1);
+  });
+
+  it('etapas que falharam em runFullSync populam lastError', async () => {
+    vi.mocked(runFullSync).mockResolvedValueOnce({
+      ran: true,
+      diagnostics: { synced: 0, failed: 0 },
+      feedbacks: { synced: 0, failed: 0 },
+      conversations: { synced: 0, failed: 0 },
+      secondOpinions: { synced: 0, failed: 0 },
+      catalogUpdated: false,
+      falhas: ['diagnostics'],
+    });
+
+    await useSyncStore.getState().syncNow();
+
+    expect(useSyncStore.getState().lastError).toContain('diagnostics');
+    expect(useSyncStore.getState().lastSyncAt).toBeTruthy();
   });
 
   it('erro no sync popula lastError', async () => {

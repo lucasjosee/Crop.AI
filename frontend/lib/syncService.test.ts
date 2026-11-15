@@ -18,6 +18,11 @@ const mocks = vi.hoisted(() => {
     const selStatus = s.match(/^select \* from (\w+) where sync_status = \?/);
     if (selStatus) return wrap(tables[selStatus[1]].filter((r) => r.sync_status === params[0]));
 
+    // vínculo do feedback: só o server_id dos diagnósticos pedidos
+    if (s.startsWith('select local_id, server_id from fila_diagnosticos where local_id in')) {
+      return wrap(tables.fila_diagnosticos.filter((r) => params.includes(r.local_id)));
+    }
+
     const selAll = s.match(/^select \* from (\w+);?$/);
     if (selAll) return wrap([...tables[selAll[1]]]);
 
@@ -60,7 +65,7 @@ vi.mock('./pendingSecondOpinionService', () => ({
 
 import { api } from './api';
 import {
-  runFullSync, syncPendingDiagnostics, MAX_RETRIES,
+  runFullSync, syncPendingDiagnostics, syncPendingFeedbacks, MAX_RETRIES,
 } from './syncService';
 
 function seedDiagnostic(overrides: Record<string, any> = {}) {
@@ -199,6 +204,103 @@ describe('syncService', () => {
     expect(manual.synced).toBe(1);
   });
 
+  it('120 diagnósticos saem em 3 requisições de 50, 50 e 20', async () => {
+    for (let i = 0; i < 120; i++) seedDiagnostic({ local_id: `l${i}`, image_s3_key: `diagnosticos/u/${i}.jpg` });
+    vi.mocked(api.post).mockImplementation(async (_url: string, body: any) => {
+      const itens = body.diagnostics as Array<{ local_id: string }>;
+      return {
+        data: {
+          status: 'success', synced_count: itens.length, failed_count: 0,
+          synced_items: itens.map((d) => ({ local_id: d.local_id, server_id: `srv-${d.local_id}` })),
+          failed_items: [],
+        },
+      } as any;
+    });
+
+    const result = await syncPendingDiagnostics();
+
+    const tamanhos = vi.mocked(api.post).mock.calls.map((c) => (c[1] as any).diagnostics.length);
+    expect(tamanhos).toEqual([50, 50, 20]);
+    expect(result).toEqual({ synced: 120, failed: 0 });
+    expect(mocks.tables.fila_diagnosticos.every((r) => r.sync_status === 'SYNCED')).toBe(true);
+  });
+
+  it('a segunda fatia falhando mantém a primeira SYNCED e deixa o resto PENDING', async () => {
+    for (let i = 0; i < 70; i++) seedDiagnostic({ local_id: `l${i}`, image_s3_key: `diagnosticos/u/${i}.jpg` });
+    vi.mocked(api.post)
+      .mockImplementationOnce(async (_url: string, body: any) => ({
+        data: {
+          status: 'success', synced_count: 50, failed_count: 0,
+          synced_items: (body.diagnostics as Array<{ local_id: string }>).map((d) => ({ local_id: d.local_id, server_id: 's' })),
+          failed_items: [],
+        },
+      }) as any)
+      .mockRejectedValueOnce(new Error('500'));
+
+    await expect(syncPendingDiagnostics()).rejects.toThrow('500');
+
+    const status = (r: any) => r.sync_status;
+    expect(mocks.tables.fila_diagnosticos.slice(0, 50).map(status)).toEqual(Array(50).fill('SYNCED'));
+    expect(mocks.tables.fila_diagnosticos.slice(50).map(status)).toEqual(Array(20).fill('PENDING'));
+  });
+
+  it('diagnóstico cujo upload falha fica de fora da fatia e PENDING; o upload vem antes do POST da fatia', async () => {
+    const ok = seedDiagnostic({ local_id: 'ok' });
+    const ruim = seedDiagnostic({ local_id: 'ruim', image_uri: 'https://example.com/ruim.jpg' });
+    const ordem: string[] = [];
+    vi.mocked(api.post).mockImplementation(async (url: string, body: any) => {
+      if (url.includes('/upload/url')) {
+        ordem.push('upload');
+        return { data: { upload_url: `https://s3.local/put/${ordem.length}`, s3_key: `diagnosticos/u/${ordem.length}.jpg`, expires_in: 600 } } as any;
+      }
+      ordem.push('sync');
+      return {
+        data: {
+          status: 'success', synced_count: body.diagnostics.length, failed_count: 0,
+          synced_items: body.diagnostics.map((d: any) => ({ local_id: d.local_id, server_id: 's' })),
+          failed_items: [],
+        },
+      } as any;
+    });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).includes('example.com')) {
+        return { ok: true, status: 200, blob: async () => new Uint8Array([1]) } as any;
+      }
+      return { ok: !String(url).endsWith('/2'), status: 200 } as any; // o segundo PUT falha
+    }));
+
+    await syncPendingDiagnostics();
+
+    expect(ordem).toEqual(['upload', 'upload', 'sync']);
+    expect(ok.sync_status).toBe('SYNCED');
+    expect(ruim.sync_status).toBe('PENDING');
+  });
+
+  it('feedbacks também sobem em fatias de 50, e a segunda falhar não desfaz a primeira', async () => {
+    for (let i = 0; i < 60; i++) {
+      mocks.tables.fila_feedbacks.push({
+        id: `f${i}`, diagnostic_local_id: `l${i}`, is_correct: 1, corrected_doenca_id: null,
+        user_correction_notes: null, timestamp: '2026-06-10 12:00:00', sync_status: 'PENDING', retry_count: 0,
+      });
+    }
+    vi.mocked(api.post)
+      .mockImplementationOnce(async (_url: string, body: any) => ({
+        data: {
+          status: 'success', processed_count: 50, failed_count: 0,
+          processed_items: (body.feedbacks as Array<{ diagnostic_local_id: string }>).map((f) => ({ diagnostic_local_id: f.diagnostic_local_id })),
+          failed_items: [],
+        },
+      }) as any)
+      .mockRejectedValueOnce(new Error('500'));
+
+    await expect(syncPendingFeedbacks()).rejects.toThrow('500');
+
+    const tamanhos = vi.mocked(api.post).mock.calls.map((c) => (c[1] as any).feedbacks.length);
+    expect(tamanhos).toEqual([50, 10]);
+    expect(mocks.tables.fila_feedbacks.slice(0, 50).every((r) => r.sync_status === 'SYNCED')).toBe(true);
+    expect(mocks.tables.fila_feedbacks.slice(50).every((r) => r.sync_status === 'PENDING')).toBe(true);
+  });
+
   it('runFullSync roda conversas e segundas opiniões, e não fala mais de slm-logs', async () => {
     const resultado = await runFullSync();
 
@@ -207,6 +309,25 @@ describe('syncService', () => {
     expect(resultado.secondOpinions).toEqual({ synced: 1, failed: 0 });
     expect(resultado).not.toHaveProperty('slmLogs');
     expect(vi.mocked(api.post).mock.calls.every(([url]) => !String(url).includes('slm-logs'))).toBe(true);
+  });
+
+  it('etapa que lança não impede as seguintes, aparece em falhas e libera o sync', async () => {
+    seedDiagnostic({ image_s3_key: 'diagnosticos/u/x.jpg' });
+    vi.mocked(api.post).mockRejectedValue(new Error('400'));
+    const { syncCatalog } = await import('./catalogSyncService');
+    vi.mocked(syncCatalog).mockResolvedValueOnce({ updated: true });
+
+    const resultado = await runFullSync();
+
+    expect(resultado.ran).toBe(true);
+    expect(resultado.falhas).toEqual(['diagnostics']);
+    expect(resultado.conversations).toEqual({ synced: 2, failed: 0 });
+    expect(resultado.secondOpinions).toEqual({ synced: 1, failed: 0 });
+    expect(syncCatalog).toHaveBeenCalledTimes(1);
+    expect(resultado.catalogUpdated).toBe(true);
+
+    // syncInProgress foi liberado: uma nova rodada roda.
+    expect((await runFullSync()).ran).toBe(true);
   });
 
   it('runFullSync não apaga nada das filas: a conversa e o diagnóstico dela não expiram', async () => {
