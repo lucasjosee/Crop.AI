@@ -29,6 +29,7 @@ import {
 } from '../../lib/chatRepository';
 import { buildCatalogContext } from '../../lib/catalogContext';
 import { DiagnosisCard } from '../../components/DiagnosisCard';
+import { ConnectionIndicator } from '../../components/ConnectionIndicator';
 import { FeedbackPanel } from '../../components/FeedbackPanel';
 import { loadDiagnosisDetails, type DiagnosisDetails } from '../../lib/diagnosisDetails';
 import { runPendingCrossValidation } from '../../lib/crossValidationService';
@@ -79,9 +80,7 @@ export default function ChatSessionScreen() {
   const partial = desfecho?.parcial ?? null;
   const partialUnsaved = desfecho?.parcialNaoSalvo ?? false;
   const lastFailed = desfecho?.falhou ?? null;
-  const { connectionMode } = useNetworkStore();
   const isBusy = isStreaming || !!pendingResponses[sessionId];
-  const modeLabel = connectionMode === 'FIELD' ? '🌾 Campo' : '☁️ Online';
   // Rota de conversa que ainda não existe: a sessão nasce no primeiro envio.
   const ehNova = sessionId === SESSAO_NOVA;
 
@@ -394,9 +393,7 @@ export default function ChatSessionScreen() {
           <Text style={styles.headerTitle} numberOfLines={1}>
             {ehNova ? 'Nova conversa' : session?.title ?? 'Agrônomo Virtual'}
           </Text>
-          <View style={[styles.modeBadge, connectionMode === 'FIELD' ? styles.fieldBadge : styles.onlineBadge]}>
-            <Text style={styles.modeBadgeText}>{modeLabel}</Text>
-          </View>
+          <ConnectionIndicator />
         </View>
 
         {modelLoadProgress !== null && (
@@ -488,10 +485,6 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.lg,
     fontWeight: '600',
   },
-  modeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: theme.borderRadius.round },
-  onlineBadge: { backgroundColor: theme.colors.primaryLight10 },
-  fieldBadge: { backgroundColor: theme.colors.warning + '20' },
-  modeBadgeText: { fontSize: theme.typography.fontSize.xs, fontWeight: '600', color: theme.colors.text },
   slmLoadingBar: {
     flexDirection: 'row',
     alignItems: 'center',
