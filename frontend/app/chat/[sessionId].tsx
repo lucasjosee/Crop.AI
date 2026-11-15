@@ -38,6 +38,7 @@ import type { ChatAttachment } from '../../lib/chatRepository';
 import { useChatStore } from '../../store/useChatStore';
 import { useNetworkStore } from '../../store/useNetworkStore';
 import { theme } from '../../config/theme';
+import { AVISO_LEGAL } from '../../config/avisoLegal';
 
 const ERROR_MESSAGES: Record<EngineError, string> = {
   MODEL_NOT_LOADED: 'Modelo offline não instalado. A resposta chega quando a conexão voltar.',
@@ -48,13 +49,6 @@ const ERROR_MESSAGES: Record<EngineError, string> = {
   ABORTED: '',
   UNKNOWN: 'Não foi possível gerar a resposta. Toque em tentar de novo.',
 };
-
-/**
- * RF02 / Lei 7.802. A prosa do motor cita defensivo e dosagem tanto quanto o
- * card, e até aqui esta tela não avisava nada.
- */
-const AVISO_LEGAL =
-  'Recomendações de defensivo exigem validação de engenheiro agrônomo (Lei 7.802/1989).';
 
 export default function ChatSessionScreen() {
   const router = useRouter();
@@ -443,6 +437,7 @@ export default function ChatSessionScreen() {
           </View>
         ) : null}
 
+        {/* RF02: a prosa do motor cita defensivo e dosagem tanto quanto o card. */}
         <Text style={styles.avisoLegal}>{AVISO_LEGAL}</Text>
 
         <View style={styles.inputRow}>

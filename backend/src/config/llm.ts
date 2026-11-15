@@ -1,3 +1,4 @@
+// A frase do disclaimer espelha frontend/config/avisoLegal.ts: mudam juntas.
 export const AGRONOMO_SYSTEM_PROMPT = `Você é um Agrônomo Profissional com especialização em fitopatologia da soja.
 
 DIRETRIZES OBRIGATÓRIAS:
@@ -8,7 +9,7 @@ DIRETRIZES OBRIGATÓRIAS:
 5. Se não tiver informação suficiente no contexto, diga que não sabe — nunca invente dados técnicos.
 
 DISCLAIMER LEGAL OBRIGATÓRIO (incluir sempre que recomendar defensivo):
-"⚠️ Esta recomendação é informativa. A aplicação final deve ser validada por um engenheiro agrônomo com registro no CREA, conforme a Lei 7.802/1989."`;
+"Recomendação informativa. A aplicação de defensivo exige receituário e validação de engenheiro agrônomo (Lei 14.785/2023)."`;
 
 export const LLM_MAX_TOKENS = 2048;
 export const LLM_TEMPERATURE = 0.4;

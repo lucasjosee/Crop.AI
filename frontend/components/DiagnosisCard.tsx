@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Image, ActivityIndicator, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../config/theme';
+import { AVISO_LEGAL } from '../config/avisoLegal';
 import { Badge } from './Badge';
 import { DefensivoItem } from './DefensivoItem';
 import { getCrossValidationPriority } from '../lib/crossValidationService';
@@ -18,10 +19,6 @@ interface DiagnosisCardProps {
    */
   isValidating: boolean;
 }
-
-const AVISO_LEGAL =
-  'ATENÇÃO: produto de uso agrícola, venda sob receituário agronômico. ' +
-  'Consulte sempre um engenheiro agrônomo antes de aplicar (Lei 7.802/1989).';
 
 function severidade(
   details: DiagnosisDetails,
