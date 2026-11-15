@@ -338,6 +338,7 @@ export default function ChatSessionScreen() {
                 attachment={item.attachment}
                 details={details}
                 isValidating={isValidating}
+                onNovaFoto={() => router.push('/camera')}
               />
               {details.feedbackJaEnviado ? (
                 <View style={styles.feedbackFeito}>

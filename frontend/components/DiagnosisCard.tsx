@@ -4,7 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../config/theme';
 import { AVISO_LEGAL } from '../config/avisoLegal';
 import { Badge } from './Badge';
+import { Button } from './Button';
 import { DefensivoItem } from './DefensivoItem';
+import { diagnosticoIncerto } from '../lib/confianca';
 import { getCrossValidationPriority } from '../lib/crossValidationService';
 import type { DiagnosisDetails } from '../lib/diagnosisDetails';
 import type { ChatAttachment } from '../lib/chatRepository';
@@ -18,14 +20,17 @@ interface DiagnosisCardProps {
    * distinguir, porque é ela que disparou.
    */
   isValidating: boolean;
+  /** O card não navega sozinho: a tela decide o que "Tirar outra foto" faz. */
+  onNovaFoto: () => void;
 }
 
 function severidade(
   details: DiagnosisDetails,
   isHealthy: boolean,
-  isPhyto: boolean
+  isPhyto: boolean,
+  incerto: boolean
 ): { label: string; type: 'success' | 'warning' | 'error' } {
-  if (isHealthy) return { label: 'Saudável', type: 'success' };
+  if (isHealthy) return incerto ? { label: 'Inconclusivo', type: 'warning' } : { label: 'Saudável', type: 'success' };
   if (isPhyto) return { label: 'Fatores abióticos', type: 'warning' };
 
   const nivel = details.doenca?.nivelSeveridade ?? 1;
@@ -34,21 +39,28 @@ function severidade(
   return { label: 'Severidade alta', type: 'error' };
 }
 
-export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ attachment, details, isValidating }) => {
+export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ attachment, details, isValidating, onNovaFoto }) => {
   const { diseaseId, confidence } = attachment.cvResult;
   const isHealthy = diseaseId === 'Saudável';
   const isPhyto = diseaseId === 'Fitotoxicidade';
   const isDoenca = !isHealthy && !isPhyto;
-  const sev = severidade(details, isHealthy, isPhyto);
   const cv = details.crossValidation;
+  const incerto = diagnosticoIncerto(confidence, cv.status);
+  const percentual = Math.round(confidence * 100);
+  const sev = severidade(details, isHealthy, isPhyto, incerto);
   const prioridade = getCrossValidationPriority(confidence, cv.status);
   const nomeLocal = details.doenca?.nomeComum ?? 'doença identificada';
 
+  const nomeDoenca = details.doenca?.nomeComum ?? 'Doença não catalogada';
   const titulo = isHealthy
-    ? 'Nenhuma doença detectada'
+    ? incerto
+      ? 'Análise inconclusiva'
+      : 'Nenhuma doença detectada'
     : isPhyto
       ? 'Dano abiótico / Fitotoxicidade'
-      : (details.doenca?.nomeComum ?? 'Doença não catalogada');
+      : incerto
+        ? `Possível ${nomeDoenca}`
+        : nomeDoenca;
 
   return (
     <View style={styles.card}>
@@ -61,9 +73,14 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ attachment, detail
             {isDoenca && details.doenca?.nomeCientifico ? (
               <Text style={styles.cientifico}>{details.doenca.nomeCientifico}</Text>
             ) : null}
-            <Text style={styles.confianca}>
-              {Math.round(confidence * 100)}% de confiança do modelo local
-            </Text>
+            {incerto ? (
+              <View style={styles.incertoLinha}>
+                <Ionicons name="warning-outline" size={14} color={theme.colors.warning} />
+                <Text style={styles.incertoTexto}>Diagnóstico incerto ({percentual}% de confiança)</Text>
+              </View>
+            ) : (
+              <Text style={styles.confianca}>{percentual}% de confiança do modelo local</Text>
+            )}
           </View>
           <Badge text={sev.label} type={sev.type} />
         </View>
@@ -133,8 +150,9 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ attachment, detail
 
         {isHealthy ? (
           <Text style={styles.especial}>
-            A folha analisada não apresenta lesão identificável. Continue monitorando a lavoura
-            periodicamente.
+            {incerto
+              ? 'Não foi possível confirmar que a planta está sadia.'
+              : 'A folha analisada não apresenta lesão identificável. Continue monitorando a lavoura periodicamente.'}
           </Text>
         ) : null}
 
@@ -144,6 +162,22 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ attachment, detail
             defensivos, ou estresse ambiental. Não é doença e não há defensivo indicado.{'\n\n'}
             Avalie o histórico de aplicações recentes com um engenheiro agrônomo.
           </Text>
+        ) : null}
+
+        {incerto ? (
+          <View style={styles.orientacao}>
+            <Text style={styles.orientacaoTexto}>
+              Tire outra foto, com a folha centralizada e boa luz, ou consulte um engenheiro
+              agrônomo.
+            </Text>
+            <Button
+              title="Tirar outra foto"
+              onPress={onNovaFoto}
+              variant="secondary"
+              icon={<Ionicons name="camera-outline" size={18} color={theme.colors.text} />}
+              accessibilityLabel="Tirar outra foto da folha"
+            />
+          </View>
         ) : null}
 
         {isDoenca ? (
@@ -162,18 +196,23 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ attachment, detail
               </Text>
             </View>
 
-            <View style={styles.secao}>
-              <Text style={styles.secaoTitulo}>Tratamentos recomendados</Text>
-              {details.defensivos.length === 0 ? (
-                <Text style={styles.secaoCorpo}>
-                  Nenhum defensivo catalogado para esta doença no banco local.
-                </Text>
-              ) : (
-                details.defensivos.map((d) => <DefensivoItem key={d.id} defensivo={d} />)
-              )}
-            </View>
+            {/* Diagnóstico incerto não recomenda defensivo nem dosagem (spec D3). */}
+            {!incerto ? (
+              <>
+                <View style={styles.secao}>
+                  <Text style={styles.secaoTitulo}>Tratamentos recomendados</Text>
+                  {details.defensivos.length === 0 ? (
+                    <Text style={styles.secaoCorpo}>
+                      Nenhum defensivo catalogado para esta doença no banco local.
+                    </Text>
+                  ) : (
+                    details.defensivos.map((d) => <DefensivoItem key={d.id} defensivo={d} />)
+                  )}
+                </View>
 
-            <Text style={styles.avisoLegal}>{AVISO_LEGAL}</Text>
+                <Text style={styles.avisoLegal}>{AVISO_LEGAL}</Text>
+              </>
+            ) : null}
           </View>
         ) : null}
       </View>
@@ -195,6 +234,10 @@ const styles = StyleSheet.create({
   titulo: { color: theme.colors.text, fontSize: theme.typography.fontSize.lg, fontWeight: '700' },
   cientifico: { color: theme.colors.textSecondary, fontSize: theme.typography.fontSize.xs, fontStyle: 'italic' },
   confianca: { color: theme.colors.textSecondary, fontSize: theme.typography.fontSize.xs, marginTop: 4 },
+  incertoLinha: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  incertoTexto: { color: theme.colors.warning, fontSize: theme.typography.fontSize.xs, fontWeight: '600', flexShrink: 1 },
+  orientacao: { marginTop: theme.spacing.md, gap: theme.spacing.sm },
+  orientacaoTexto: { color: theme.colors.text, fontSize: theme.typography.fontSize.sm, lineHeight: 20 },
   validando: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginTop: theme.spacing.md },
   validandoTexto: { color: theme.colors.textSecondary, fontSize: theme.typography.fontSize.sm },
   indisponivel: { color: theme.colors.textSecondary, fontSize: theme.typography.fontSize.xs, marginTop: theme.spacing.md },
