@@ -31,6 +31,7 @@ import {
 import { buildCatalogContext } from '../../lib/catalogContext';
 import { DiagnosisCard } from '../../components/DiagnosisCard';
 import { ConnectionIndicator } from '../../components/ConnectionIndicator';
+import { TextoFormatado } from '../../components/TextoFormatado';
 import { FeedbackPanel } from '../../components/FeedbackPanel';
 import { loadDiagnosisDetails, type DiagnosisDetails } from '../../lib/diagnosisDetails';
 import { runPendingCrossValidation } from '../../lib/crossValidationService';
@@ -361,7 +362,11 @@ export default function ChatSessionScreen() {
       return (
         <View style={[styles.messageRow, isUser ? styles.userRow : styles.assistantRow]}>
           <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
-            <Text style={[styles.messageText, isUser && styles.userText]}>{item.content}</Text>
+            {isUser ? (
+              <Text style={[styles.messageText, styles.userText]}>{item.content}</Text>
+            ) : (
+              <TextoFormatado texto={item.content} style={styles.messageText} />
+            )}
             {!isUser && item.source && (
               <Ionicons
                 name={item.source === 'CLOUD_LLM' ? 'cloud-outline' : 'phone-portrait-outline'}
@@ -431,7 +436,7 @@ export default function ChatSessionScreen() {
         {(isStreaming && streamingContent !== '') || partial ? (
           <View style={[styles.messageRow, styles.assistantRow]}>
             <View style={[styles.bubble, styles.assistantBubble]}>
-              <Text style={styles.messageText}>{partial ?? streamingContent}</Text>
+              <TextoFormatado texto={partial ?? streamingContent} style={styles.messageText} />
               {partial && <Text style={styles.partialNote}>{partialUnsaved ? 'não salva' : 'resposta incompleta'}</Text>}
             </View>
           </View>
