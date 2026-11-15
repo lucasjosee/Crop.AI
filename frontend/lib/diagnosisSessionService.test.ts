@@ -70,6 +70,13 @@ describe('startDiagnosisSession', () => {
     expect(msgParams).toEqual(expect.arrayContaining(['id-2', 'user', '']));
   });
 
+  it('com confiança baixa, o título da sessão não afirma a doença', async () => {
+    await startDiagnosisSession(input({ inference: { ...inference, confidence: 0.16 } }));
+    const [, sessionParams] = call('INSERT INTO chat_sessions');
+    expect(sessionParams).toContain('Possível Ferrugem Asiática');
+    expect(sessionParams).not.toContain('Ferrugem Asiática');
+  });
+
   it('sem posição, grava latitude e longitude nulas', async () => {
     await startDiagnosisSession(input({ gps: null }));
 

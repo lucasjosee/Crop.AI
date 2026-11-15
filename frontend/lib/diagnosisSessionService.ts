@@ -2,6 +2,7 @@ import { randomUUID } from 'expo-crypto';
 import { dbDriver } from '../db/sqlite';
 import { saveImagePersistently } from './imageHelper';
 import { appendMessage, createSession, type ChatAttachment, type ChatSession } from './chatRepository';
+import { tituloDaAnalise } from './confianca';
 import type { InferenceResult } from './inference';
 import type { ConnectionMode } from '../config/network';
 
@@ -70,7 +71,7 @@ export async function startDiagnosisSession(
 
   try {
     session = await createSession({
-      title: input.diseaseName,
+      title: tituloDaAnalise(input.inference.diseaseId, input.diseaseName, input.inference.confidence),
       originDiagnosticLocalId: diagnosticLocalId,
     });
 

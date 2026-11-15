@@ -21,6 +21,7 @@ import { Button } from '../components/Button';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { runImageInference, type InferenceResult } from '../lib/inference';
 import { resolveDiseaseName } from '../lib/diagnosisDetails';
+import { diagnosticoIncerto } from '../lib/confianca';
 import { startDiagnosisSession } from '../lib/diagnosisSessionService';
 
 /** Imagem mínima para o simulador de diagnóstico; só existe sob __DEV__. */
@@ -202,32 +203,61 @@ export default function CameraScreen() {
   }
 
   if (etapa === 'CONFIRMACAO' && captura) {
+    const percentual = Math.round(captura.inference.confidence * 100);
+    // Na câmera o status da segunda opinião ainda não existe: só a confiança decide.
+    const incerta = diagnosticoIncerto(captura.inference.confidence, 'PENDING');
+    const rotuloChip = !incerta
+      ? `${captura.diseaseName} · ${percentual}%`
+      : captura.inference.diseaseId === 'Saudável'
+        ? `Inconclusivo · ${percentual}%`
+        : `Possível ${captura.diseaseName} · ${percentual}%`;
+
     return (
       <SafeAreaView style={styles.confirmacao}>
         <Image source={{ uri: captura.uri }} style={styles.fotoCheia} resizeMode="cover" />
 
-        <View style={styles.chip}>
-          <Text style={styles.chipTexto}>
-            {captura.diseaseName} · {Math.round(captura.inference.confidence * 100)}%
-          </Text>
+        <View style={styles.topoConfirmacao}>
+          <View style={styles.chip}>
+            <Text style={styles.chipTexto}>{rotuloChip}</Text>
+          </View>
+          {incerta ? (
+            <View style={styles.avisoBaixa}>
+              <Ionicons name="warning-outline" size={16} color={theme.colors.warning} />
+              <Text style={styles.avisoBaixaTexto}>
+                Confiança baixa. Tente outra foto com a folha centralizada e boa luz.
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.acoes}>
-          <TouchableOpacity
-            style={styles.repetir}
-            onPress={repetir}
-            disabled={confirmando}
-            accessibilityRole="button"
-            accessibilityLabel="Repetir a foto"
-          >
-            <Text style={styles.repetirTexto}>Repetir</Text>
-          </TouchableOpacity>
+          {incerta ? (
+            <Button
+              title="Repetir"
+              onPress={repetir}
+              disabled={confirmando}
+              variant="primary"
+              style={styles.repetirCheio}
+              accessibilityLabel="Repetir a foto"
+            />
+          ) : (
+            <TouchableOpacity
+              style={styles.repetir}
+              onPress={repetir}
+              disabled={confirmando}
+              accessibilityRole="button"
+              accessibilityLabel="Repetir a foto"
+            >
+              <Text style={styles.repetirTexto}>Repetir</Text>
+            </TouchableOpacity>
+          )}
           <Button
             title="Analisar"
             onPress={confirmar}
             loading={confirmando}
-            variant="primary"
-            style={styles.analisar}
+            variant={incerta ? 'secondary' : 'primary'}
+            style={incerta ? [styles.analisar, styles.analisarSecundario] : styles.analisar}
+            textStyle={incerta ? styles.analisarSecundarioTexto : undefined}
             accessibilityLabel="Analisar esta foto e abrir a conversa"
           />
         </View>
@@ -393,10 +423,25 @@ const styles = StyleSheet.create({
 
   confirmacao: { flex: 1, backgroundColor: '#000000' },
   fotoCheia: { ...StyleSheet.absoluteFill },
-  chip: {
+  topoConfirmacao: {
     position: 'absolute',
     top: 72,
-    alignSelf: 'center',
+    left: theme.spacing.lg,
+    right: theme.spacing.lg,
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  avisoBaixa: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.md,
+  },
+  avisoBaixaTexto: { flexShrink: 1, color: theme.colors.warning, fontSize: theme.typography.fontSize.sm, fontWeight: '600' },
+  chip: {
     backgroundColor: 'rgba(0,0,0,0.72)',
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.sm,
@@ -422,6 +467,10 @@ const styles = StyleSheet.create({
   },
   repetirTexto: { color: '#FFFFFF', fontSize: theme.typography.fontSize.md, fontWeight: '600' },
   analisar: { flex: 1 },
+  repetirCheio: { flex: 1 },
+  // O secundário padrão tem texto escuro e fundo transparente: ilegível sobre a foto.
+  analisarSecundario: { borderColor: '#FFFFFF' },
+  analisarSecundarioTexto: { color: '#FFFFFF' },
 
   barraTopo: { flexDirection: 'row', justifyContent: 'space-between', padding: theme.spacing.md },
   botaoCirculo: {
