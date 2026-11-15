@@ -32,7 +32,10 @@ vi.mock('../lib/secureStorage', () => ({
   },
 }));
 
+const apiMocks = vi.hoisted(() => ({ refreshAccessToken: vi.fn() }));
+
 vi.mock('../lib/api', () => ({
+  refreshAccessToken: apiMocks.refreshAccessToken,
   api: {
     get: vi.fn(),
     post: vi.fn(),
@@ -197,6 +200,69 @@ describe('useAuthStore', () => {
     expect(state.user?.id).toBe('user-789');
     expect(state.user?.nome).toBe('João');
     expect(state.accessToken).toBe(mockAccessToken);
+  });
+
+  describe('boot com access token expirado', () => {
+    function tokenComExp(expSegundos: number): string {
+      const payload = JSON.stringify({ sub: 'user-789', role: 'Produtor', exp: expSegundos });
+      const b64 = require('buffer').Buffer.from(payload).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+      return `header.${b64}.signature`;
+    }
+    const expirado = tokenComExp(Math.floor((Date.now() - 3600000) / 1000));
+
+    beforeEach(() => {
+      vi.spyOn(secureStorage, 'getItem').mockImplementation(async (key) => {
+        if (key === 'access_token') return expirado;
+        if (key === 'refresh_token') return 'refresh-guardado';
+        if (key === 'user_email') return 'produtor@fazenda.com';
+        if (key === 'user_nome') return 'João';
+        return null;
+      });
+    });
+
+    it('entra autenticado sem esperar o refresh de fundo', async () => {
+      let liberar: (token: string) => void = () => {};
+      apiMocks.refreshAccessToken.mockImplementationOnce(
+        () => new Promise<string>((resolve) => { liberar = resolve; })
+      );
+
+      await useAuthStore.getState().loadStoredSession();
+
+      // O refresh ainda não resolveu e o boot já terminou autenticado
+      const state = useAuthStore.getState();
+      expect(apiMocks.refreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(state.isAuthenticated).toBe(true);
+      expect(state.isLoading).toBe(false);
+      expect(state.user?.id).toBe('user-789');
+      expect(state.user?.nome).toBe('João');
+      liberar('novo');
+    });
+
+    it('recusa no refresh de fundo desloga (o logout é feito por dentro do refresh)', async () => {
+      // O refreshAccessToken real chama logout() na recusa; o fake reproduz isso.
+      apiMocks.refreshAccessToken.mockImplementationOnce(async () => {
+        await useAuthStore.getState().logout();
+        throw Object.assign(new Error('REFRESH_DENIED'), { response: { status: 403 } });
+      });
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      await useAuthStore.getState().loadStoredSession();
+      await vi.waitFor(() => expect(useAuthStore.getState().isAuthenticated).toBe(false));
+
+      expect(secureStorage.removeItem).toHaveBeenCalledWith('refresh_token');
+    });
+
+    it('falha de rede no refresh de fundo mantém a sessão e os tokens', async () => {
+      apiMocks.refreshAccessToken.mockRejectedValueOnce(new Error('Network Error'));
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      await useAuthStore.getState().loadStoredSession();
+      await vi.waitFor(() => expect(apiMocks.refreshAccessToken).toHaveBeenCalled());
+      await Promise.resolve();
+
+      expect(useAuthStore.getState().isAuthenticated).toBe(true);
+      expect(secureStorage.removeItem).not.toHaveBeenCalled();
+    });
   });
 
   it('deve efetuar logout local limpando estados', async () => {
