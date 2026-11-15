@@ -4,7 +4,7 @@ import { syncCatalog } from './catalogSyncService';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { ensureDiagnosticImageUploaded } from './diagnosticImageUploadService';
-import { MAX_RETRIES, type StepResult } from './syncContracts';
+import { MAX_RETRIES, MAX_ITENS_POR_LOTE, type StepResult } from './syncContracts';
 import { syncPendingConversations } from './conversationSyncService';
 import { sweepPendingSecondOpinions } from './pendingSecondOpinionService';
 
@@ -73,27 +73,16 @@ async function markRetry(table: string, keyCol: string, row: QueueRow): Promise<
   );
 }
 
-export async function syncPendingDiagnostics(includeFailed = false): Promise<StepResult> {
-  const rows = await getQueueRows('fila_diagnosticos', includeFailed);
-  if (rows.length === 0) return { synced: 0, failed: 0 };
+function emFatias<T>(itens: T[], tamanho: number): T[][] {
+  const fatias: T[][] = [];
+  for (let i = 0; i < itens.length; i += tamanho) fatias.push(itens.slice(i, i + tamanho));
+  return fatias;
+}
 
-  const ready: QueueRow[] = [];
-  for (const row of rows) {
-    if (!row.image_s3_key) {
-      try {
-        row.image_s3_key = await uploadImageForDiagnostic(row);
-      } catch {
-        // T5.8: item fica fora do lote desta rodada, permanece PENDING
-        console.warn(`[Sync] Upload falhou para ${row.local_id}; mantido como PENDING.`);
-        continue;
-      }
-    }
-    ready.push(row);
-  }
-  if (ready.length === 0) return { synced: 0, failed: 0 };
-
-  const { data } = await api.post('/api/v1/sync/diagnostics', {
-    diagnostics: ready.map((r) => ({
+/** Corpo de POST /sync/diagnostics para as linhas já com `image_s3_key`. Puro. */
+export function montarCorpoDiagnosticos(rows: QueueRow[]) {
+  return {
+    diagnostics: rows.map((r) => ({
       local_id: r.local_id,
       timestamp: toIso(r.timestamp),
       image_s3_key: r.image_s3_key,
@@ -111,7 +100,44 @@ export async function syncPendingDiagnostics(includeFailed = false): Promise<Ste
         llm_observacoes: r.llm_observacoes ?? null,
       },
     })),
-  });
+  };
+}
+
+/** Corpo de POST /sync/feedback. `serverIdByLocal` mapeia diagnostic_local_id -> server_id. Puro. */
+export function montarCorpoFeedbacks(
+  rows: QueueRow[],
+  serverIdByLocal: Record<string, string | null>
+) {
+  return {
+    feedbacks: rows.map((r) => ({
+      diagnostic_server_id: serverIdByLocal[r.diagnostic_local_id] ?? null,
+      diagnostic_local_id: r.diagnostic_local_id,
+      timestamp_feedback: toIso(r.timestamp),
+      is_correct: !!r.is_correct,
+      user_correction_notes: r.user_correction_notes ?? null,
+      corrected_doenca_id: r.corrected_doenca_id ?? null,
+    })),
+  };
+}
+
+async function syncFatiaDiagnosticos(rows: QueueRow[]): Promise<StepResult> {
+  // A imagem sobe antes da fatia que a referencia.
+  const ready: QueueRow[] = [];
+  for (const row of rows) {
+    if (!row.image_s3_key) {
+      try {
+        row.image_s3_key = await uploadImageForDiagnostic(row);
+      } catch {
+        // T5.8: item fica fora do lote desta rodada, permanece PENDING
+        console.warn(`[Sync] Upload falhou para ${row.local_id}; mantido como PENDING.`);
+        continue;
+      }
+    }
+    ready.push(row);
+  }
+  if (ready.length === 0) return { synced: 0, failed: 0 };
+
+  const { data } = await api.post('/api/v1/sync/diagnostics', montarCorpoDiagnosticos(ready));
 
   for (const item of data.synced_items ?? []) {
     await dbDriver.execute(
@@ -127,24 +153,25 @@ export async function syncPendingDiagnostics(includeFailed = false): Promise<Ste
   return { synced: data.synced_count ?? 0, failed: data.failed_count ?? 0 };
 }
 
-export async function syncPendingFeedbacks(includeFailed = false): Promise<StepResult> {
-  const rows = await getQueueRows('fila_feedbacks', includeFailed);
-  if (rows.length === 0) return { synced: 0, failed: 0 };
+export async function syncPendingDiagnostics(includeFailed = false): Promise<StepResult> {
+  const rows = await getQueueRows('fila_diagnosticos', includeFailed);
+  const total: StepResult = { synced: 0, failed: 0 };
 
-  const diagRows = toArray(await dbDriver.execute('SELECT * FROM fila_diagnosticos;'));
-  const serverIdByLocal: Record<string, string | null> = {};
-  for (const d of diagRows) serverIdByLocal[d.local_id] = d.server_id ?? null;
+  // Uma requisição por fatia, em sequência. Uma fatia concluída fica
+  // concluída; se a seguinte lançar, o erro sobe e as demais ficam PENDING.
+  for (const fatia of emFatias(rows, MAX_ITENS_POR_LOTE)) {
+    const r = await syncFatiaDiagnosticos(fatia);
+    total.synced += r.synced;
+    total.failed += r.failed;
+  }
+  return total;
+}
 
-  const { data } = await api.post('/api/v1/sync/feedback', {
-    feedbacks: rows.map((r) => ({
-      diagnostic_server_id: serverIdByLocal[r.diagnostic_local_id] ?? null,
-      diagnostic_local_id: r.diagnostic_local_id,
-      timestamp_feedback: toIso(r.timestamp),
-      is_correct: !!r.is_correct,
-      user_correction_notes: r.user_correction_notes ?? null,
-      corrected_doenca_id: r.corrected_doenca_id ?? null,
-    })),
-  });
+async function syncFatiaFeedbacks(
+  rows: QueueRow[],
+  serverIdByLocal: Record<string, string | null>
+): Promise<StepResult> {
+  const { data } = await api.post('/api/v1/sync/feedback', montarCorpoFeedbacks(rows, serverIdByLocal));
 
   for (const item of data.processed_items ?? []) {
     await dbDriver.execute(
@@ -158,6 +185,23 @@ export async function syncPendingFeedbacks(includeFailed = false): Promise<StepR
   }
 
   return { synced: data.processed_count ?? 0, failed: data.failed_count ?? 0 };
+}
+
+export async function syncPendingFeedbacks(includeFailed = false): Promise<StepResult> {
+  const rows = await getQueueRows('fila_feedbacks', includeFailed);
+  if (rows.length === 0) return { synced: 0, failed: 0 };
+
+  const diagRows = toArray(await dbDriver.execute('SELECT * FROM fila_diagnosticos;'));
+  const serverIdByLocal: Record<string, string | null> = {};
+  for (const d of diagRows) serverIdByLocal[d.local_id] = d.server_id ?? null;
+
+  const total: StepResult = { synced: 0, failed: 0 };
+  for (const fatia of emFatias(rows, MAX_ITENS_POR_LOTE)) {
+    const r = await syncFatiaFeedbacks(fatia, serverIdByLocal);
+    total.synced += r.synced;
+    total.failed += r.failed;
+  }
+  return total;
 }
 
 let syncInProgress = false;
