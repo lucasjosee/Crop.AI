@@ -8,7 +8,7 @@ export const crossValidationController = {
     // com o mesmo formato de details — é o padrão dos outros cinco controllers.
     const input = crossValidationInputSchema.parse(request.body);
     const user = request.user as { sub: string };
-    const result = await crossValidationService.crossValidate(user.sub, input);
+    const result = await crossValidationService.crossValidate(user.sub, input, request.log);
     return reply.code(200).send(result);
   },
 };

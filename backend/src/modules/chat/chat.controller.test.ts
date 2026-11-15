@@ -5,10 +5,11 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 
 // O controller instancia o ChatService na carga do módulo, então o mock
 // delega a um vi.fn hoisted que cada teste reconfigura.
-const mocks = vi.hoisted(() => ({ stream: vi.fn() }));
+const mocks = vi.hoisted(() => ({ stream: vi.fn(), verificarCota: vi.fn() }));
 vi.mock('./chat.service', () => ({
   ChatService: class {
     stream = mocks.stream;
+    verificarCota = mocks.verificarCota;
   },
 }));
 
@@ -39,6 +40,7 @@ const tick = () => new Promise((r) => setImmediate(r));
 describe('chatController.stream', () => {
   beforeEach(() => {
     mocks.stream.mockReset();
+    mocks.verificarCota.mockReset();
   });
 
   it('termina com done quando o close do request sai depois de o corpo ser lido', async () => {

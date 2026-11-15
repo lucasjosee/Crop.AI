@@ -72,7 +72,7 @@ describe('POST /diagnosis/cross-validate (route integration)', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(crossValidate).toHaveBeenCalledWith('user-from-token', payload);
+    expect(crossValidate).toHaveBeenCalledWith('user-from-token', payload, expect.anything());
     expect(response.json().cross_validation.result_status).toBe('CONFIRMED');
   });
 

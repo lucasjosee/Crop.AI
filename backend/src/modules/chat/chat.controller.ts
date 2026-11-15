@@ -18,6 +18,8 @@ export const chatController = {
       throw new ValidationError('A imagem não pertence ao usuário autenticado.');
     }
 
+    await chatService.verificarCota(user.sub);
+
     // Hijack the response to write SSE manually
     reply.hijack();
 

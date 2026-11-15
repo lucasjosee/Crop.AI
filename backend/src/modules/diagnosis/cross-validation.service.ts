@@ -1,7 +1,9 @@
+import { env } from '../../config/env';
 import { CROSS_VALIDATION_SYSTEM_PROMPT } from '../../config/llm';
 import type { LLMProvider } from '../chat/providers/llm.provider';
 import { createLLMProvider } from '../chat/providers/llm.provider';
 import { S3DiagnosticImageLoader, type DiagnosticImageLoader } from '../../shared/diagnostic-image-loader';
+import { usoLlmRepository, type UsoLlmRepository } from '../uso-llm/uso-llm.repository';
 import { AppError, ConflictError, ValidationError } from '../../shared/errors';
 import {
   llmCrossValidationSchema,
@@ -94,10 +96,15 @@ export class CrossValidationService {
     private readonly provider: LLMProvider = createLLMProvider(),
     private readonly repository: CrossValidationRepository = new DrizzleCrossValidationRepository(),
     private readonly imageLoader: DiagnosticImageLoader = new S3DiagnosticImageLoader(),
-    private readonly timeoutMs = CROSS_VALIDATION_TIMEOUT_MS
+    private readonly timeoutMs = CROSS_VALIDATION_TIMEOUT_MS,
+    private readonly usoRepo: UsoLlmRepository = usoLlmRepository
   ) {}
 
-  async crossValidate(userId: string, input: CrossValidationInput) {
+  async crossValidate(
+    userId: string,
+    input: CrossValidationInput,
+    log: { error(obj: object, msg?: string): void } = { error: (obj, msg) => console.error(msg, obj) }
+  ) {
     const expectedPrefix = `diagnosticos/${userId}/`;
     if (!input.image_s3_key.startsWith(expectedPrefix)) {
       throw new ValidationError('A imagem não pertence ao usuário autenticado.');
@@ -132,9 +139,15 @@ export class CrossValidationService {
     const prompt = this.buildPrompt(input, cvDisease, catalog);
     let rawResponse: string;
     try {
-      rawResponse = await this.withTimeout(
-        this.provider.analyzeImage(CROSS_VALIDATION_SYSTEM_PROMPT, prompt, image)
-      );
+      try {
+        rawResponse = await this.withTimeout(
+          this.provider.analyzeImage(CROSS_VALIDATION_SYSTEM_PROMPT, prompt, image)
+        );
+      } finally {
+        // A inferência foi pedida ao provedor, deu certo ou não. analyzeImage
+        // não devolve uso, então os tokens ficam nulos.
+        await this.registrarUso(userId, log);
+      }
     } catch (error: any) {
       // Sem sair de PENDING, o cliente offline-first re-tenta indefinidamente e
       // cada ciclo custa um GetObject no S3 mais uma inferência de visão paga.
@@ -184,6 +197,22 @@ export class CrossValidationService {
         llm_confianca: normalized.llm_confianca,
       },
     };
+  }
+
+  private async registrarUso(userId: string, log: { error(obj: object, msg?: string): void }) {
+    try {
+      await this.usoRepo.registrar({
+        userId,
+        tipo: 'SEGUNDA_OPINIAO',
+        provedor: env.LLM_PROVIDER,
+        modelo: env.LLM_MODEL_ID,
+        tokensEntrada: null,
+        tokensSaida: null,
+        comImagem: true,
+      });
+    } catch (error) {
+      log.error({ err: error, userId }, 'Não foi possível registrar o uso da LLM na segunda opinião');
+    }
   }
 
   private buildPrompt(

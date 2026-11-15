@@ -5,7 +5,8 @@ import { createLLMProvider, LLMProvider, StreamCallbacks } from './providers/llm
 import { ChatStreamInput } from './chat.schema';
 import { AppError } from '../../shared/errors';
 import { S3DiagnosticImageLoader, type DiagnosticImageLoader } from '../../shared/diagnostic-image-loader';
-import type { LLMImageInput } from './providers/llm.provider';
+import type { LLMImageInput, LLMUsage } from './providers/llm.provider';
+import { usoLlmRepository, type UsoLlmRepository } from '../uso-llm/uso-llm.repository';
 
 interface JwtUser {
   sub: string;
@@ -32,6 +33,7 @@ export class ChatService {
   private readonly timeoutMs: number;
   private readonly imageLoader: DiagnosticImageLoader;
   private readonly imageTimeoutMs: number;
+  private readonly usoRepo: UsoLlmRepository;
 
   constructor(
     provider?: LLMProvider,
@@ -39,17 +41,35 @@ export class ChatService {
       timeoutMs?: number;
       imageLoader?: DiagnosticImageLoader;
       imageTimeoutMs?: number;
+      usoRepo?: UsoLlmRepository;
     } = {}
   ) {
     this.provider = provider ?? createLLMProvider();
     this.timeoutMs = opcoes.timeoutMs ?? CHAT_STREAM_TIMEOUT_MS;
     this.imageLoader = opcoes.imageLoader ?? new S3DiagnosticImageLoader();
     this.imageTimeoutMs = opcoes.imageTimeoutMs ?? CHAT_IMAGE_LOAD_TIMEOUT_MS;
+    this.usoRepo = opcoes.usoRepo ?? usoLlmRepository;
+  }
+
+  /**
+   * Cota diária: roda antes de a resposta virar stream, para sair como 429
+   * normal. Contagem e gravação não são atômicas, então requisições
+   * simultâneas podem passar do teto por poucas unidades (aceito, ADR 0007).
+   */
+  async verificarCota(userId: string): Promise<void> {
+    const usadas = await this.usoRepo.contarChatsDasUltimas24h(userId);
+    if (usadas >= env.LLM_CHAT_DAILY_LIMIT) {
+      throw new AppError(
+        429,
+        'DAILY_QUOTA_EXCEEDED',
+        'O limite diário de conversas com o assistente online foi atingido.'
+      );
+    }
   }
 
   async stream(
     input: ChatStreamInput,
-    _user: JwtUser,
+    user: JwtUser,
     callbacks: StreamCallbacks,
     contexto: ChatStreamContext
   ): Promise<void> {
@@ -68,6 +88,15 @@ export class ChatService {
     if (contexto.signal?.aborted) controller.abort();
     contexto.signal?.addEventListener('abort', aoCancelar, { once: true });
 
+    let uso: LLMUsage | null = null;
+    const callbacksComUso: StreamCallbacks = {
+      onChunk: callbacks.onChunk,
+      onDone: (u) => {
+        uso = u;
+        callbacks.onDone(u);
+      },
+    };
+
     let estourou = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const teto = new Promise<never>((_, reject) => {
@@ -81,7 +110,7 @@ export class ChatService {
 
     try {
       await Promise.race([
-        this.provider.stream(systemPrompt, input.history, input.message, callbacks, {
+        this.provider.stream(systemPrompt, input.history, input.message, callbacksComUso, {
           signal: controller.signal,
           imagem,
         }),
@@ -111,6 +140,29 @@ export class ChatService {
     } finally {
       if (timer) clearTimeout(timer);
       contexto.signal?.removeEventListener('abort', aoCancelar);
+      // Sucesso, erro ou cancelamento: a chamada chegou ao provedor e conta na cota.
+      await this.registrarUso(user.sub, uso, imagem !== undefined, contexto.log);
+    }
+  }
+
+  private async registrarUso(
+    userId: string,
+    uso: LLMUsage | null,
+    comImagem: boolean,
+    log: ChatLogger
+  ): Promise<void> {
+    try {
+      await this.usoRepo.registrar({
+        userId,
+        tipo: 'CHAT',
+        provedor: env.LLM_PROVIDER,
+        modelo: env.LLM_MODEL_ID,
+        tokensEntrada: uso?.tokensEntrada ?? null,
+        tokensSaida: uso?.tokensSaida ?? null,
+        comImagem,
+      });
+    } catch (error) {
+      log.error({ err: error, userId }, 'Não foi possível registrar o uso da LLM na conversa');
     }
   }
 

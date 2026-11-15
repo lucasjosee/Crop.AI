@@ -13,6 +13,11 @@ import { crossValidationInputSchema } from './cross-validation.schema';
 import { CrossValidationService } from './cross-validation.service';
 import type { DiagnosticImageLoader } from '../../shared/diagnostic-image-loader';
 
+const usoMocks = vi.hoisted(() => ({ registrar: vi.fn(async () => {}) }));
+vi.mock('../uso-llm/uso-llm.repository', () => ({
+  usoLlmRepository: { registrar: usoMocks.registrar, contarChatsDasUltimas24h: vi.fn() },
+}));
+
 const input = {
   diagnostic_local_id: '00000000-0000-4000-8000-000000000001',
   image_s3_key: 'diagnosticos/user-1/image.jpg',
@@ -74,6 +79,32 @@ describe('CrossValidationService', () => {
         mimeType: 'image/jpeg',
       })),
     };
+  });
+
+  it('grava uma linha de uso por inferência feita, com tokens nulos', async () => {
+    provider.analyzeImage.mockResolvedValue(
+      JSON.stringify({
+        result_status: 'CONFIRMED',
+        llm_doenca_id: null,
+        llm_doenca_nome: null,
+        llm_observacoes: 'ok',
+        llm_confianca: 0.9,
+      })
+    );
+    usoMocks.registrar.mockClear();
+
+    await new CrossValidationService(provider, repository, imageLoader).crossValidate('user-1', input);
+
+    expect(usoMocks.registrar).toHaveBeenCalledTimes(1);
+    expect(usoMocks.registrar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        tipo: 'SEGUNDA_OPINIAO',
+        tokensEntrada: null,
+        tokensSaida: null,
+        comImagem: true,
+      })
+    );
   });
 
   // P2.2 — toda falha retornava antes do saveResult, deixando PENDING, que não é

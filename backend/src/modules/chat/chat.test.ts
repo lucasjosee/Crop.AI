@@ -4,6 +4,11 @@ import { AppError } from '../../shared/errors';
 import { chatStreamInputSchema } from './chat.schema';
 import { LLMProvider, LLMMessage, StreamCallbacks, StreamOptions } from './providers/llm.provider';
 
+// O serviço grava o uso no Postgres; estes testes são de unidade.
+vi.mock('../uso-llm/uso-llm.repository', () => ({
+  usoLlmRepository: { registrar: vi.fn(async () => {}), contarChatsDasUltimas24h: vi.fn() },
+}));
+
 // Mock LLM Provider that returns predictable chunks
 class MockLLMProvider implements LLMProvider {
   lastSystemPrompt = '';

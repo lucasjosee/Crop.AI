@@ -32,6 +32,7 @@ export const cvStatusEnum = pgEnum('cv_status', [
 export const ragTypeEnum = pgEnum('rag_entity_type', ['DOENCA', 'DEFENSIVO']);
 
 export const mensagemPapelEnum = pgEnum('mensagem_papel', ['user', 'assistant']);
+export const usoLlmTipoEnum = pgEnum('uso_llm_tipo', ['CHAT', 'SEGUNDA_OPINIAO']);
 export const mensagemOrigemEnum = pgEnum('mensagem_origem', ['LOCAL_SLM', 'CLOUD_LLM']);
 
 // Custom type for pgvector placeholder (v2)
@@ -288,3 +289,24 @@ export const documentosRag = pgTable('documentos_rag', {
   isActive: boolean('is_active').default(true).notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+// 12. uso_llm — uma linha por chamada que chegou ao provedor de LLM. Base da
+// cota diária de conversa (ADR 0007) e de qualquer conta de custo futura.
+export const usoLlm = pgTable(
+  'uso_llm',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .references(() => usuarios.id, { onDelete: 'cascade' })
+      .notNull(),
+    tipo: usoLlmTipoEnum('tipo').notNull(),
+    provedor: varchar('provedor', { length: 50 }).notNull(),
+    modelo: varchar('modelo', { length: 100 }).notNull(),
+    // Nulos quando não medidos: chamada com erro ou cancelada, e segunda opinião.
+    tokensEntrada: integer('tokens_entrada'),
+    tokensSaida: integer('tokens_saida'),
+    comImagem: boolean('com_imagem').default(false).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('idx_uso_llm_user_created').on(table.userId, table.createdAt)]
+);
