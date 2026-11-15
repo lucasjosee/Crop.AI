@@ -32,13 +32,17 @@ const mocks = vi.hoisted(() => {
   return {
     FakeEventSource,
     refreshAccessToken: vi.fn(async () => 'token-novo'),
+    refreshFoiRecusado: (e: any) => [400, 401, 403].includes(e?.response?.status),
     accessToken: 'token-atual',
     ensureUploaded: vi.fn(async () => 'diagnosticos/u/foto.jpg'),
   };
 });
 
 vi.mock('react-native-sse', () => ({ default: mocks.FakeEventSource }));
-vi.mock('../api', () => ({ refreshAccessToken: mocks.refreshAccessToken }));
+vi.mock('../api', () => ({
+  refreshAccessToken: mocks.refreshAccessToken,
+  refreshFoiRecusado: mocks.refreshFoiRecusado,
+}));
 vi.mock('../../store/useAuthStore', () => ({
   useAuthStore: { getState: () => ({ accessToken: mocks.accessToken }) },
 }));
@@ -279,6 +283,20 @@ describe('CloudEngine', () => {
 
     expect(mocks.refreshAccessToken).toHaveBeenCalledTimes(1);
     expect(cb.onError).toHaveBeenCalledWith('TOKEN_EXPIRED');
+  });
+
+  it.each([
+    ['recusa do servidor (403)', { response: { status: 403 } }, 'TOKEN_EXPIRED'],
+    ['falha de rede', new Error('Network Error'), 'LLM_UNAVAILABLE'],
+  ])('refresh rejeitado por %s vira %s', async (_nome, erro, esperado) => {
+    mocks.refreshAccessToken.mockRejectedValueOnce(erro);
+    const cb = callbacks();
+    engine.respond(baseInput(), cb, new AbortController().signal);
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    FakeEventSource.last().emit('error', { type: 'error', xhrStatus: 401, message: 'x' });
+
+    await vi.waitFor(() => expect(cb.onError).toHaveBeenCalledWith(esperado));
   });
 
   it('abortar durante o refresh de 401 reporta ABORTED e não abre nova conexão', async () => {
