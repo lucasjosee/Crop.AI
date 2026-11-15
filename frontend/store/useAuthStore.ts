@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { Platform } from 'react-native';
 import { secureStorage } from '../lib/secureStorage';
-import { api } from '../lib/api';
+import { api, refreshAccessToken } from '../lib/api';
 
 export interface User {
   id: string;
@@ -94,19 +94,37 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             isLoading: false,
           });
           return;
-        } else if (refreshToken) {
-          // Token expirou mas temos refresh token. Tentaremos o refresh imediato.
+        } else if (decoded) {
+          // Access expirado, identidade legível: entra na hora com o que está
+          // guardado e renova em segundo plano pelo mutex (ADR 0006). Sem
+          // rede o produtor não espera nem é mandado ao login; só a recusa do
+          // servidor desloga, e isso o refreshAccessToken já faz por dentro.
+          set({
+            user: {
+              id: decoded.sub,
+              role: decoded.role,
+              email: storedEmail || '',
+              nome: storedNome || '',
+            },
+            accessToken,
+            isAuthenticated: true,
+            isLoading: false,
+          });
+          refreshAccessToken().catch((error) => {
+            console.warn('[AuthStore] Refresh de fundo no boot falhou.', error);
+          });
+          return;
+        } else {
+          // Access ilegível: não há identidade para entrar. Espera o refresh.
+          // Falha de transporte deixa os tokens para o próximo boot com rede;
+          // na recusa, o logout de dentro do refresh já apagou tudo.
           try {
-            console.log('[AuthStore] Access token expired, attempting silent refresh on boot...');
-            const response = await api.post('/api/v1/auth/refresh', {
-              refresh_token: refreshToken,
-            });
-            const { access_token, refresh_token: new_refresh_token } = response.data;
-            await get().setTokens(access_token, new_refresh_token);
+            console.log('[AuthStore] Access token ilegível, renovando no boot...');
+            await refreshAccessToken();
             set({ isLoading: false });
             return;
-          } catch {
-            console.warn('[AuthStore] Boot refresh failed, clearing session.');
+          } catch (error) {
+            console.warn('[AuthStore] Refresh no boot falhou.', error);
           }
         }
       }

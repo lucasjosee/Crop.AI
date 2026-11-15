@@ -1,5 +1,5 @@
 import EventSource from 'react-native-sse';
-import { refreshAccessToken } from '../api';
+import { refreshAccessToken, refreshFoiRecusado } from '../api';
 import { useAuthStore } from '../../store/useAuthStore';
 import { ensureDiagnosticImageUploaded } from '../diagnosticImageUploadService';
 import type { ChatAttachment, ChatMessage } from '../chatRepository';
@@ -190,8 +190,12 @@ export class CloudEngine implements ConversationEngine {
               token = newToken;
               attempt();
             })
-            .catch(() => {
-              callbacks.onError(signal.aborted ? 'ABORTED' : 'TOKEN_EXPIRED');
+            .catch((erro) => {
+              // Só a recusa do servidor é "sessão expirada"; falha de rede
+              // deixa o roteador cair para o motor local (ADR 0006).
+              callbacks.onError(
+                signal.aborted ? 'ABORTED' : refreshFoiRecusado(erro) ? 'TOKEN_EXPIRED' : 'LLM_UNAVAILABLE'
+              );
             });
           return;
         }

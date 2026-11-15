@@ -20,6 +20,17 @@ export const api = axios.create({
   },
 });
 
+/**
+ * O servidor recusou o refresh? Só 400, 401 e 403 contam: o token foi
+ * rejeitado e não adianta tentar de novo. Sem resposta (rede, timeout), 429 e
+ * 5xx são falha de transporte — a sessão continua valendo e os tokens ficam
+ * onde estão, porque o produtor em campo fica horas sem sinal (ADR 0006).
+ */
+export function refreshFoiRecusado(erro: unknown): boolean {
+  const status = (erro as { response?: { status?: number } } | null)?.response?.status;
+  return status === 400 || status === 401 || status === 403;
+}
+
 let refreshInFlight: Promise<string> | null = null;
 
 /**
@@ -36,11 +47,13 @@ export function refreshAccessToken(): Promise<string> {
     // undefined se o próprio import dinâmico rejeitar (inalcançável hoje —
     // módulo local, já no bundle).
     let useAuthStore: (typeof import('../store/useAuthStore'))['useAuthStore'] | undefined;
+    let semToken = false;
     try {
       // import dinâmico preguiçoso evita o ciclo api.ts <-> useAuthStore.ts
       ({ useAuthStore } = await import('../store/useAuthStore'));
       const refreshToken = await secureStorage.getItem('refresh_token');
       if (!refreshToken) {
+        semToken = true;
         throw new Error('Refresh token não encontrado no Secure Store local.');
       }
       const response = await api.post('/api/v1/auth/refresh', { refresh_token: refreshToken });
@@ -48,8 +61,12 @@ export function refreshAccessToken(): Promise<string> {
       await useAuthStore.getState().setTokens(access_token, newRefreshToken);
       return access_token as string;
     } catch (error) {
-      console.warn('[API] Falha na rotação do refresh token. Forçando logout.');
-      await useAuthStore?.getState().logout();
+      if (semToken || refreshFoiRecusado(error)) {
+        console.warn('[API] Refresh recusado pelo servidor ou sem token guardado. Encerrando a sessão.');
+        await useAuthStore?.getState().logout();
+      } else {
+        console.warn('[API] Refresh falhou por transporte (sem rede, timeout ou 5xx). A sessão continua.');
+      }
       throw error;
     } finally {
       refreshInFlight = null;

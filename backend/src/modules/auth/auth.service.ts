@@ -101,71 +101,107 @@ export class AuthService {
   async refresh(refreshToken: string, jwtSign: (payload: any) => string) {
     const tokenHash = hashToken(refreshToken);
 
-    // Find the token
-    const tokenRecord = await db.query.refreshTokens.findFirst({
-      where: eq(refreshTokens.tokenHash, tokenHash),
-    });
+    // Tudo numa transação, com a linha do token apresentado travada: duas
+    // re-tentativas simultâneas não geram dois sucessores vivos (ADR 0006).
+    // A revogação geral precisa persistir mesmo quando a rota devolve 403, e
+    // um throw dentro da transação a desfaria; por isso a transação devolve o
+    // veredito e o erro é lançado depois do commit.
+    type Veredito =
+      | { negado: string; user?: undefined; newRawRefreshToken?: undefined }
+      | { negado?: undefined; user: typeof usuarios.$inferSelect; newRawRefreshToken: string };
 
-    if (!tokenRecord) {
-      throw new ForbiddenError('Refresh token inválido ou não encontrado.', 'REFRESH_DENIED');
-    }
+    const resultado = await db.transaction(async (tx): Promise<Veredito> => {
+      const [tokenRecord] = await tx
+        .select()
+        .from(refreshTokens)
+        .where(eq(refreshTokens.tokenHash, tokenHash))
+        .limit(1)
+        .for('update');
 
-    // 1. REUSE DETECTION: If token is already revoked, it's a security breach
-    if (tokenRecord.revokedAt) {
-      // Invalidate ALL sessions for this user
-      await db
+      if (!tokenRecord) {
+        return { negado: 'Refresh token inválido ou não encontrado.' } as const;
+      }
+
+      const agora = new Date();
+      const expirado = agora > tokenRecord.expiresAt;
+      let respostaPerdida = false;
+
+      if (tokenRecord.revokedAt) {
+        if (tokenRecord.replacedById && !expirado) {
+          const [sucessor] = await tx
+            .select()
+            .from(refreshTokens)
+            .where(eq(refreshTokens.id, tokenRecord.replacedById))
+            .limit(1)
+            .for('update');
+          respostaPerdida = !!sucessor && !sucessor.revokedAt && agora <= sucessor.expiresAt;
+          if (respostaPerdida) {
+            // O sucessor nunca chegou ao aparelho: foi suplantado, não rotacionado.
+            await tx
+              .update(refreshTokens)
+              .set({ revokedAt: agora })
+              .where(eq(refreshTokens.id, sucessor.id));
+          }
+        }
+
+        if (!respostaPerdida) {
+          // Reuso detectado: revoga todas as sessões do usuário.
+          await tx
+            .update(refreshTokens)
+            .set({ revokedAt: agora })
+            .where(eq(refreshTokens.userId, tokenRecord.userId));
+          return {
+            negado:
+              'Refresh token já utilizado. Todas as sessões ativas do usuário foram revogadas por segurança.',
+          } as const;
+        }
+      } else if (expirado) {
+        return { negado: 'Refresh token expirado. Faça login novamente.' } as const;
+      }
+
+      const user = await tx.query.usuarios.findFirst({
+        where: eq(usuarios.id, tokenRecord.userId),
+      });
+
+      if (!user || user.deletedAt) {
+        return { negado: 'Usuário associado não encontrado ou inativo.' } as const;
+      }
+
+      const newRawRefreshToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30); // 30 days
+
+      const [novo] = await tx
+        .insert(refreshTokens)
+        .values({
+          userId: user.id,
+          tokenHash: hashToken(newRawRefreshToken),
+          deviceInfo: tokenRecord.deviceInfo,
+          expiresAt,
+        })
+        .returning({ id: refreshTokens.id });
+
+      // Rotação (ou resposta perdida): o apresentado aponta para o novo sucessor.
+      await tx
         .update(refreshTokens)
-        .set({ revokedAt: new Date() })
-        .where(eq(refreshTokens.userId, tokenRecord.userId));
+        .set({ revokedAt: tokenRecord.revokedAt ?? agora, replacedById: novo.id })
+        .where(eq(refreshTokens.id, tokenRecord.id));
 
-      throw new ForbiddenError(
-        'Refresh token já utilizado. Todas as sessões ativas do usuário foram revogadas por segurança.',
-        'REFRESH_DENIED'
-      );
-    }
-
-    // 2. EXPIRATION CHECK
-    if (new Date() > tokenRecord.expiresAt) {
-      throw new ForbiddenError('Refresh token expirado. Faça login novamente.', 'REFRESH_DENIED');
-    }
-
-    // Get the user
-    const user = await db.query.usuarios.findFirst({
-      where: eq(usuarios.id, tokenRecord.userId),
+      return { user, newRawRefreshToken } as const;
     });
 
-    if (!user || user.deletedAt) {
-      throw new ForbiddenError('Usuário associado não encontrado ou inativo.', 'REFRESH_DENIED');
+    if (resultado.negado !== undefined) {
+      throw new ForbiddenError(resultado.negado, 'REFRESH_DENIED');
     }
 
-    // 3. ROTATION: Revoke the old token
-    await db
-      .update(refreshTokens)
-      .set({ revokedAt: new Date() })
-      .where(eq(refreshTokens.id, tokenRecord.id));
-
-    // Generate new pair
     const newAccessToken = jwtSign({
-      sub: user.id,
-      role: user.role,
-    });
-
-    const newRawRefreshToken = crypto.randomBytes(32).toString('hex');
-    const newHash = hashToken(newRawRefreshToken);
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30); // 30 days
-
-    // Insert new refresh token
-    await db.insert(refreshTokens).values({
-      userId: user.id,
-      tokenHash: newHash,
-      deviceInfo: tokenRecord.deviceInfo,
-      expiresAt,
+      sub: resultado.user.id,
+      role: resultado.user.role,
     });
 
     return {
       access_token: newAccessToken,
-      refresh_token: newRawRefreshToken,
+      refresh_token: resultado.newRawRefreshToken,
       expires_in: 900,
       token_type: 'Bearer',
     };

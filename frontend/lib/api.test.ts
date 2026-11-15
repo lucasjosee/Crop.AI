@@ -13,7 +13,7 @@ vi.mock('../store/useAuthStore', () => ({
   useAuthStore: { getState: () => ({ accessToken: 'antigo', setTokens: mocks.setTokens, logout: mocks.logout }) },
 }));
 
-import { api, refreshAccessToken } from './api';
+import { api, refreshAccessToken, refreshFoiRecusado } from './api';
 
 describe('refreshAccessToken', () => {
   beforeEach(() => {
@@ -46,11 +46,26 @@ describe('refreshAccessToken', () => {
     expect(api.post).toHaveBeenCalledTimes(2);
   });
 
-  it('em falha faz logout e rejeita', async () => {
-    vi.spyOn(api, 'post').mockRejectedValue(new Error('REFRESH_DENIED'));
+  it('recusa do servidor (403) faz logout e rejeita', async () => {
+    const recusa = Object.assign(new Error('REFRESH_DENIED'), { response: { status: 403 } });
+    vi.spyOn(api, 'post').mockRejectedValue(recusa);
 
-    await expect(refreshAccessToken()).rejects.toThrow('REFRESH_DENIED');
+    await expect(refreshAccessToken()).rejects.toBe(recusa);
     expect(mocks.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it('falha de rede NÃO faz logout e rejeita', async () => {
+    vi.spyOn(api, 'post').mockRejectedValue(new Error('Network Error'));
+
+    await expect(refreshAccessToken()).rejects.toThrow('Network Error');
+    expect(mocks.logout).not.toHaveBeenCalled();
+  });
+
+  it('5xx NÃO faz logout e rejeita', async () => {
+    vi.spyOn(api, 'post').mockRejectedValue(Object.assign(new Error('x'), { response: { status: 503 } }));
+
+    await expect(refreshAccessToken()).rejects.toThrow('x');
+    expect(mocks.logout).not.toHaveBeenCalled();
   });
 
   it('sem refresh token guardado, faz logout e rejeita', async () => {
@@ -67,5 +82,15 @@ describe('refreshAccessToken', () => {
 
     vi.spyOn(api, 'post').mockResolvedValue({ data: { access_token: 'novo', refresh_token: 'r2' } } as never);
     await expect(refreshAccessToken()).resolves.toBe('novo');
+  });
+});
+
+describe('refreshFoiRecusado', () => {
+  it.each([400, 401, 403])('%i é recusa', (status) => {
+    expect(refreshFoiRecusado({ response: { status } })).toBe(true);
+  });
+
+  it.each([[undefined], [429], [500], [503]])('%s não é recusa', (status) => {
+    expect(refreshFoiRecusado(status === undefined ? new Error('Network Error') : { response: { status } })).toBe(false);
   });
 });

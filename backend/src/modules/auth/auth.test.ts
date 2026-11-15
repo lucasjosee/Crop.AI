@@ -226,41 +226,65 @@ describe('Auth Module Integration Tests', () => {
       expect(protectedRes.statusCode).toBe(200);
     });
 
+    const refresh = (refresh_token: string) =>
+      app.inject({ method: 'POST', url: '/api/v1/auth/refresh', payload: { refresh_token } });
+
+    async function sessoesVivas() {
+      const todos = await db.select().from(refreshTokens);
+      return todos.filter((t) => !t.revokedAt).length;
+    }
+
     it('should block and invalidate all sessions if a refresh token is reused', async () => {
-      // 1. First refresh (should succeed and revoke the original token)
-      const firstRefresh = await app.inject({
-        method: 'POST',
-        url: '/api/v1/auth/refresh',
-        payload: {
-          refresh_token: tokens.refresh_token,
-        },
-      });
+      // 1. T0 -> T1 e T1 -> T2: T0 fica duas gerações atrás, com o sucessor já rotacionado
+      const firstRefresh = await refresh(tokens.refresh_token);
       expect(firstRefresh.statusCode).toBe(200);
       const firstRefreshTokens = JSON.parse(firstRefresh.body);
+      const secondRotation = await refresh(firstRefreshTokens.refresh_token);
+      expect(secondRotation.statusCode).toBe(200);
+      const secondRotationTokens = JSON.parse(secondRotation.body);
 
-      // 2. Second refresh attempting to use the SAME old token (reused)
-      const secondRefresh = await app.inject({
-        method: 'POST',
-        url: '/api/v1/auth/refresh',
-        payload: {
-          refresh_token: tokens.refresh_token,
-        },
-      });
+      // 2. Reapresentar o T0 (reuso)
+      const secondRefresh = await refresh(tokens.refresh_token);
 
       expect(secondRefresh.statusCode).toBe(403);
       const secondRefreshBody = JSON.parse(secondRefresh.body);
       expect(secondRefreshBody.error.code).toBe('REFRESH_DENIED');
       expect(secondRefreshBody.error.message).toContain('já utilizado');
 
-      // 3. Verify that the NEW refresh token got invalidated as well
-      const thirdRefresh = await app.inject({
-        method: 'POST',
-        url: '/api/v1/auth/refresh',
-        payload: {
-          refresh_token: firstRefreshTokens.refresh_token,
-        },
-      });
+      // 3. O token vigente (T2) também foi invalidado, e a revogação persistiu no banco
+      const thirdRefresh = await refresh(secondRotationTokens.refresh_token);
       expect(thirdRefresh.statusCode).toBe(403);
+      expect(await sessoesVivas()).toBe(0);
+    });
+
+    it('should tolerate the previous token while its successor is unused (lost response)', async () => {
+      const first = JSON.parse((await refresh(tokens.refresh_token)).body);
+
+      // A resposta se perdeu: o aparelho reapresenta o token antigo
+      const retry = await refresh(tokens.refresh_token);
+      expect(retry.statusCode).toBe(200);
+      const retryTokens = JSON.parse(retry.body);
+      expect(retryTokens.refresh_token).not.toBe(first.refresh_token);
+      expect(retryTokens.refresh_token).not.toBe(tokens.refresh_token);
+
+      // O sucessor que nunca chegou ao aparelho foi suplantado; o novo está vivo
+      expect(await sessoesVivas()).toBe(1);
+      const ok = await refresh(retryTokens.refresh_token);
+      expect(ok.statusCode).toBe(200);
+    });
+
+    it('should revoke everything if a superseded successor is presented later', async () => {
+      const first = JSON.parse((await refresh(tokens.refresh_token)).body);
+      const retry = await refresh(tokens.refresh_token); // suplanta o first
+      expect(retry.statusCode).toBe(200);
+      const retryTokens = JSON.parse(retry.body);
+
+      const lateUse = await refresh(first.refresh_token);
+      expect(lateUse.statusCode).toBe(403);
+      expect(JSON.parse(lateUse.body).error.code).toBe('REFRESH_DENIED');
+      // Persistiu: o token do retry também caiu
+      expect(await sessoesVivas()).toBe(0);
+      expect((await refresh(retryTokens.refresh_token)).statusCode).toBe(403);
     });
 
     it('should logout and invalidate the refresh token', async () => {
@@ -287,6 +311,18 @@ describe('Auth Module Integration Tests', () => {
         },
       });
       expect(refreshRes.statusCode).toBe(403);
+    });
+
+    it('should not tolerate a logged-out token (no successor)', async () => {
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/logout',
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+        payload: { refresh_token: tokens.refresh_token },
+      });
+      const res = await refresh(tokens.refresh_token);
+      expect(res.statusCode).toBe(403);
+      expect(JSON.parse(res.body).error.code).toBe('REFRESH_DENIED');
     });
   });
 });
