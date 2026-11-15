@@ -1,5 +1,6 @@
 import { api } from './api';
 import { dbDriver } from '../db/sqlite';
+import { LIMIAR_CONFIANCA } from './confianca';
 import { ensureDiagnosticImageUploaded } from './diagnosticImageUploadService';
 import type { ChatAttachment } from './chatRepository';
 import type { ConnectionMode } from '../config/network';
@@ -119,7 +120,7 @@ export function getCrossValidationPriority(
     return { primary: 'CV', showBoth: false };
   }
   return {
-    primary: cvConfidence < 0.7 ? 'LLM' : 'CV',
+    primary: cvConfidence < LIMIAR_CONFIANCA ? 'LLM' : 'CV',
     showBoth: true,
   };
 }
