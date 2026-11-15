@@ -31,6 +31,7 @@ vi.mock('../lib/syncService', () => ({
     conversations: { synced: 0, failed: 0 },
     secondOpinions: { synced: 0, failed: 0 },
     catalogUpdated: false,
+    falhas: [],
   })),
 }));
 
@@ -84,6 +85,7 @@ describe('useSyncStore', () => {
           conversations: { synced: 0, failed: 0 },
           secondOpinions: { synced: 0, failed: 0 },
           catalogUpdated: false,
+          falhas: [],
         });
       })
     );
@@ -96,6 +98,23 @@ describe('useSyncStore', () => {
     await Promise.all([first, second]);
 
     expect(vi.mocked(runFullSync)).toHaveBeenCalledTimes(1);
+  });
+
+  it('etapas que falharam em runFullSync populam lastError', async () => {
+    vi.mocked(runFullSync).mockResolvedValueOnce({
+      ran: true,
+      diagnostics: { synced: 0, failed: 0 },
+      feedbacks: { synced: 0, failed: 0 },
+      conversations: { synced: 0, failed: 0 },
+      secondOpinions: { synced: 0, failed: 0 },
+      catalogUpdated: false,
+      falhas: ['diagnostics'],
+    });
+
+    await useSyncStore.getState().syncNow();
+
+    expect(useSyncStore.getState().lastError).toContain('diagnostics');
+    expect(useSyncStore.getState().lastSyncAt).toBeTruthy();
   });
 
   it('erro no sync popula lastError', async () => {

@@ -20,6 +20,8 @@ export interface FullSyncResult {
   conversations: StepResult;
   secondOpinions: StepResult;
   catalogUpdated: boolean;
+  /** Nomes das etapas que lançaram nesta rodada; vazio quando tudo correu. */
+  falhas: string[];
 }
 
 const EMPTY_RESULT: FullSyncResult = {
@@ -29,6 +31,7 @@ const EMPTY_RESULT: FullSyncResult = {
   conversations: { synced: 0, failed: 0 },
   secondOpinions: { synced: 0, failed: 0 },
   catalogUpdated: false,
+  falhas: [],
 };
 
 function toArray(res: any): QueueRow[] {
@@ -217,19 +220,33 @@ export async function runFullSync(opts: { includeFailed?: boolean } = {}): Promi
   console.log('[Sync] Iniciando sincronização completa...');
   try {
     const includeFailed = opts.includeFailed ?? false;
-    const diagnostics = await syncPendingDiagnostics(includeFailed);
-    const feedbacks = await syncPendingFeedbacks(includeFailed);
+    const falhas: string[] = [];
+    // Cada etapa tem o seu try: a exceção de uma não cancela as seguintes
+    // (um lote recusado de diagnósticos não pode impedir o catálogo).
+    const etapa = async <T,>(nome: string, vazio: T, fn: () => Promise<T>): Promise<T> => {
+      try {
+        return await fn();
+      } catch (err) {
+        console.warn(`[Sync] A etapa "${nome}" falhou.`, err);
+        falhas.push(nome);
+        return vazio;
+      }
+    };
+    const zero: StepResult = { synced: 0, failed: 0 };
+
+    const diagnostics = await etapa('diagnostics', zero, () => syncPendingDiagnostics(includeFailed));
+    const feedbacks = await etapa('feedbacks', zero, () => syncPendingFeedbacks(includeFailed));
     // Conversas depois dos diagnósticos: o servidor resolve o vínculo
     // `diagnostico_id` na hora quando o diagnóstico já chegou.
-    const conversations = await syncPendingConversations(includeFailed);
-    const secondOpinions = await sweepPendingSecondOpinions();
-    const catalog = await syncCatalog();
+    const conversations = await etapa('conversations', zero, () => syncPendingConversations(includeFailed));
+    const secondOpinions = await etapa('secondOpinions', zero, () => sweepPendingSecondOpinions());
+    const catalog = await etapa('catalog', { updated: false }, () => syncCatalog());
     console.log('[Sync] Sincronização concluída.', {
-      diagnostics, feedbacks, conversations, secondOpinions,
+      diagnostics, feedbacks, conversations, secondOpinions, falhas,
     });
     return {
       ran: true, diagnostics, feedbacks, conversations, secondOpinions,
-      catalogUpdated: catalog.updated,
+      catalogUpdated: catalog.updated, falhas,
     };
   } finally {
     syncInProgress = false;

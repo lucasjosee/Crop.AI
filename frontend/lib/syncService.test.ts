@@ -306,6 +306,25 @@ describe('syncService', () => {
     expect(vi.mocked(api.post).mock.calls.every(([url]) => !String(url).includes('slm-logs'))).toBe(true);
   });
 
+  it('etapa que lança não impede as seguintes, aparece em falhas e libera o sync', async () => {
+    seedDiagnostic({ image_s3_key: 'diagnosticos/u/x.jpg' });
+    vi.mocked(api.post).mockRejectedValue(new Error('400'));
+    const { syncCatalog } = await import('./catalogSyncService');
+    vi.mocked(syncCatalog).mockResolvedValueOnce({ updated: true });
+
+    const resultado = await runFullSync();
+
+    expect(resultado.ran).toBe(true);
+    expect(resultado.falhas).toEqual(['diagnostics']);
+    expect(resultado.conversations).toEqual({ synced: 2, failed: 0 });
+    expect(resultado.secondOpinions).toEqual({ synced: 1, failed: 0 });
+    expect(syncCatalog).toHaveBeenCalledTimes(1);
+    expect(resultado.catalogUpdated).toBe(true);
+
+    // syncInProgress foi liberado: uma nova rodada roda.
+    expect((await runFullSync()).ran).toBe(true);
+  });
+
   it('runFullSync não apaga nada das filas: a conversa e o diagnóstico dela não expiram', async () => {
     await runFullSync();
     const deletes = mocks.execute.mock.calls

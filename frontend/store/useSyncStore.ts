@@ -61,6 +61,9 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       if (result.ran) {
         set({ lastSyncAt: new Date().toISOString() });
       }
+      if (result.falhas.length > 0) {
+        set({ lastError: `Etapas do sync com falha: ${result.falhas.join(', ')}` });
+      }
     } catch (err: any) {
       set({ lastError: err?.message ?? 'Falha na sincronização' });
     } finally {
