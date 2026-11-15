@@ -62,7 +62,9 @@ export const chatController = {
     try {
       await chatService.stream(parsed, user, {
         onChunk: async (text: string) => {
-          if (aborted) return;
+          // writableEnded: depois do teto de tempo a resposta já foi encerrada,
+          // e um provedor que ignore o cancelamento ainda pode entregar um pedaço.
+          if (aborted || reply.raw.writableEnded) return;
           reply.raw.write(`data: ${JSON.stringify({ chunk: text })}\n\n`);
         },
         onDone: (uso) => {
