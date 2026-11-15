@@ -176,15 +176,44 @@ export async function softDeleteSession(id: string): Promise<void> {
   );
 }
 
-export async function getSessionDiseaseId(sessionId: string): Promise<string | null> {
+export interface SessionDiagnosis {
+  /** `cvResult.diseaseId` do anexo: id do catálogo, `Saudável` ou `Fitotoxicidade`. */
+  diseaseId: string;
+  confidence: number;
+  /** Status da segunda opinião na fila; `null` se a linha de origem não existe. */
+  crossValidationStatus: string | null;
+}
+
+/**
+ * O diagnóstico da sessão, a partir do anexo da primeira foto. O `diseaseId`
+ * vem do `cvResult` e não de `fila_diagnosticos.doenca_id`, porque as classes
+ * especiais gravam `doenca_id` nulo. Sessão sem foto (conversa livre) dá `null`.
+ */
+export async function getSessionDiagnosis(sessionId: string): Promise<SessionDiagnosis | null> {
   const res = await dbDriver.execute(
-    `SELECT d.doenca_id
+    `SELECT (SELECT m.attachment_json FROM chat_messages m
+              WHERE m.session_id = s.id AND m.attachment_json IS NOT NULL
+              ORDER BY m.created_at ASC, m.id ASC LIMIT 1) AS attachment_json,
+            d.cross_validation_status
        FROM chat_sessions s
-       JOIN fila_diagnosticos d ON d.local_id = s.origin_diagnostic_local_id
+       LEFT JOIN fila_diagnosticos d ON d.local_id = s.origin_diagnostic_local_id
       WHERE s.id = ?;`,
     [sessionId]
   );
-  return res.rows.length > 0 ? (res.rows._array[0].doenca_id ?? null) : null;
+  if (res.rows.length === 0) return null;
+  const row = res.rows._array[0] as Record<string, any>;
+  if (!row.attachment_json) return null;
+  try {
+    const cv = (JSON.parse(row.attachment_json) as { cvResult?: Record<string, unknown> })?.cvResult;
+    if (typeof cv?.diseaseId !== 'string' || typeof cv.confidence !== 'number') return null;
+    return {
+      diseaseId: cv.diseaseId,
+      confidence: cv.confidence,
+      crossValidationStatus: row.cross_validation_status ?? null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**

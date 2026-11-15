@@ -6,11 +6,15 @@ import {
   type EngineCallbacks,
   type EngineInput,
 } from './types';
+import { LIMIAR_CONFIANCA } from '../confianca';
 
 /** A SLM é texto: a foto é ignorada e o achado do CV entra como preâmbulo. */
 function attachmentPreamble(attachment: ChatAttachment): string {
   const confianca = Math.round(attachment.cvResult.confidence * 100);
   const alvo = attachment.diseaseName ?? 'a doença descrita no contexto';
+  if (attachment.cvResult.confidence < LIMIAR_CONFIANCA) {
+    return `O modelo de visão sugeriu ${alvo} com apenas ${confianca}% de confiança, o que é incerto. Explique essa incerteza, peça outra foto, com a folha centralizada e boa luz, ou mais sintomas, e não indique defensivo nem dosagem.`;
+  }
   return `O modelo de visão identificou ${alvo} com ${confianca}% de confiança. Apresente o diagnóstico, o tratamento e os defensivos indicados.`;
 }
 

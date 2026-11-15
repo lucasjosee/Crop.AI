@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mocks = vi.hoisted(() => ({ execute: vi.fn() }));
 vi.mock('../db/sqlite', () => ({ dbDriver: { execute: mocks.execute } }));
 
+import type { SessionDiagnosis } from './chatRepository';
 import { buildCatalogContext, MAX_DEFENSIVOS, MAX_FIELD_CHARS } from './catalogContext';
 
 function rows(list: Array<Record<string, unknown>>) {
@@ -30,20 +31,47 @@ function defensivo(n: number, extra: Record<string, unknown> = {}) {
   };
 }
 
+function diag(diseaseId: string, confidence = 0.9, status: string | null = 'PENDING'): SessionDiagnosis {
+  return { diseaseId, confidence, crossValidationStatus: status };
+}
+
 describe('buildCatalogContext', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.execute.mockResolvedValue(rows([]));
   });
 
-  it('planta saudável não consulta o banco', async () => {
-    expect(await buildCatalogContext(null)).toContain('Planta saudável');
-    expect(await buildCatalogContext('Saudável')).toContain('Planta saudável');
+  it('conversa livre (null) devolve contexto vazio, sem consultar o banco', async () => {
+    expect(await buildCatalogContext(null)).toBe('');
     expect(mocks.execute).not.toHaveBeenCalled();
   });
 
+  it('saudável com confiança suficiente diz planta saudável', async () => {
+    expect(await buildCatalogContext(diag('Saudável'))).toContain('Planta saudável');
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+
+  it('saudável incerto não afirma saúde e pede outra foto', async () => {
+    const ctx = await buildCatalogContext(diag('Saudável', 0.16));
+    expect(ctx).not.toContain('Planta saudável');
+    expect(ctx).toContain('Não afirme');
+    expect(ctx).toContain('outra foto');
+  });
+
+  it('doença incerta traz o alerta e nenhum defensivo nem dose', async () => {
+    mocks.execute.mockResolvedValueOnce(rows([defensivo(1), defensivo(2)]));
+    const ctx = await buildCatalogContext(diag('uuid-ferrugem', 0.16));
+    expect(ctx).toContain('diagnóstico incerto');
+    expect(ctx).toContain('16%');
+    expect(ctx).toContain('Doença: Ferrugem Asiática');
+    expect(ctx).toContain('Sintomas: Pústulas');
+    expect(ctx).not.toContain('Defensivos indicados');
+    expect(ctx).not.toContain('Dose');
+    expect(ctx).not.toContain('300 mL/ha');
+  });
+
   it('fitotoxicidade explica que não é doença e não indica defensivo', async () => {
-    const ctx = await buildCatalogContext('Fitotoxicidade');
+    const ctx = await buildCatalogContext(diag('Fitotoxicidade'));
     expect(ctx).toContain('não é doença');
     expect(ctx).toContain('Não há defensivo');
     expect(mocks.execute).not.toHaveBeenCalled();
@@ -52,7 +80,7 @@ describe('buildCatalogContext', () => {
   it('consulta por id, nunca por nome, e monta o cabeçalho da doença', async () => {
     mocks.execute.mockResolvedValueOnce(rows([defensivo(1)]));
 
-    const ctx = await buildCatalogContext('uuid-ferrugem');
+    const ctx = await buildCatalogContext(diag('uuid-ferrugem'));
 
     const [sql, params] = mocks.execute.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('WHERE d.id = ?');
@@ -66,7 +94,7 @@ describe('buildCatalogContext', () => {
   it('inclui dose, carência, máximo de aplicações e os campos da bula', async () => {
     mocks.execute.mockResolvedValueOnce(rows([defensivo(1)]));
 
-    const ctx = await buildCatalogContext('uuid-ferrugem');
+    const ctx = await buildCatalogContext(diag('uuid-ferrugem'));
 
     expect(ctx).toContain('1. Produto 1 (ativo 1)');
     expect(ctx).toContain('Dose: 300 mL/ha · Carência: 30 dias · Máx. 2 aplicações/ciclo');
@@ -77,7 +105,7 @@ describe('buildCatalogContext', () => {
   it(`limita a ${MAX_DEFENSIVOS} defensivos pelo LIMIT da consulta`, async () => {
     mocks.execute.mockResolvedValueOnce(rows([defensivo(1), defensivo(2), defensivo(3)]));
 
-    await buildCatalogContext('uuid-ferrugem');
+    await buildCatalogContext(diag('uuid-ferrugem'));
 
     const [sql, params] = mocks.execute.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('LIMIT ?');
@@ -90,7 +118,7 @@ describe('buildCatalogContext', () => {
       defensivo(1, { bula_resumida: JSON.stringify({ modo_de_acao: longo, epoca_aplicacao: longo }) }),
     ]));
 
-    const ctx = await buildCatalogContext('uuid-ferrugem');
+    const ctx = await buildCatalogContext(diag('uuid-ferrugem'));
 
     const linhaModo = ctx.split('\n').find((l) => l.includes('Modo de ação:'))!;
     expect(linhaModo.length).toBeLessThanOrEqual(MAX_FIELD_CHARS + 'Modo de ação: '.length + 4);
@@ -100,7 +128,7 @@ describe('buildCatalogContext', () => {
   it('doença sem defensivo cadastrado ainda monta o cabeçalho', async () => {
     mocks.execute.mockResolvedValueOnce(rows([{ ...doenca, nome_comercial: null }]));
 
-    const ctx = await buildCatalogContext('uuid-ferrugem');
+    const ctx = await buildCatalogContext(diag('uuid-ferrugem'));
 
     expect(ctx).toContain('Doença: Ferrugem Asiática');
     expect(ctx).toContain('Nenhum defensivo cadastrado');
@@ -109,7 +137,7 @@ describe('buildCatalogContext', () => {
   it('bula malformada não derruba o contexto', async () => {
     mocks.execute.mockResolvedValueOnce(rows([defensivo(1, { bula_resumida: '{nao e json' })]));
 
-    const ctx = await buildCatalogContext('uuid-ferrugem');
+    const ctx = await buildCatalogContext(diag('uuid-ferrugem'));
 
     expect(ctx).toContain('1. Produto 1');
     expect(ctx).not.toContain('Modo de ação:');
@@ -117,7 +145,7 @@ describe('buildCatalogContext', () => {
 
   it('id desconhecido devolve string vazia', async () => {
     mocks.execute.mockResolvedValueOnce(rows([]));
-    expect(await buildCatalogContext('uuid-inexistente')).toBe('');
+    expect(await buildCatalogContext(diag('uuid-inexistente'))).toBe('');
   });
 
   it('no pior caso (3 defensivos com todos os campos no teto) a saída cabe em 2.000 caracteres', async () => {
@@ -131,7 +159,7 @@ describe('buildCatalogContext', () => {
       });
     mocks.execute.mockResolvedValueOnce(rows([pior(1), pior(2), pior(3)]));
 
-    const ctx = await buildCatalogContext('uuid-ferrugem');
+    const ctx = await buildCatalogContext(diag('uuid-ferrugem'));
 
     // Orçamento: a SLM tem n_ctx 2048 e ainda precisa de prompt de sistema,
     // 10 mensagens de histórico e 512 tokens de resposta.
