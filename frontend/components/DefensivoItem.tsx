@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../config/theme';
 import type { DiagnosisDefensivo } from '../lib/diagnosisDetails';
 
@@ -56,7 +57,14 @@ export const DefensivoItem: React.FC<DefensivoItemProps> = ({ defensivo }) => {
           accessibilityLabel={bulaAberta ? 'Recolher a bula' : 'Ver a bula'}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Text style={styles.verBula}>{bulaAberta ? '▾ recolher bula' : '▸ ver bula'}</Text>
+          <View style={styles.verBula}>
+            <Ionicons
+              name={bulaAberta ? 'chevron-down' : 'chevron-forward'}
+              size={14}
+              color={theme.colors.primary}
+            />
+            <Text style={styles.verBulaTexto}>{bulaAberta ? 'recolher bula' : 'ver bula'}</Text>
+          </View>
         </TouchableOpacity>
       ) : null}
 
@@ -98,6 +106,7 @@ const styles = StyleSheet.create({
   linha: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4, gap: 4 },
   rotulo: { color: theme.colors.textSecondary, fontSize: theme.typography.fontSize.xs, fontWeight: '600' },
   valor: { color: theme.colors.text, fontSize: theme.typography.fontSize.xs, flexShrink: 1 },
-  verBula: { color: theme.colors.primary, fontSize: theme.typography.fontSize.xs, fontWeight: '600', marginTop: theme.spacing.sm },
+  verBula: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, marginTop: theme.spacing.sm },
+  verBulaTexto: { color: theme.colors.primary, fontSize: theme.typography.fontSize.xs, fontWeight: '600' },
   bula: { marginTop: 4, borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: theme.spacing.sm },
 });

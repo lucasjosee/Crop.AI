@@ -12,6 +12,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { engineRouter, type EngineError } from '../../lib/engine';
@@ -344,7 +345,10 @@ export default function ChatSessionScreen() {
                 isValidating={isValidating}
               />
               {details.feedbackJaEnviado ? (
-                <Text style={styles.feedbackFeito}>✓ Feedback registrado</Text>
+                <View style={styles.feedbackFeito}>
+                  <Ionicons name="checkmark" size={14} color={theme.colors.primary} />
+                  <Text style={styles.feedbackFeitoTexto}>Feedback registrado</Text>
+                </View>
               ) : item.attachment.diagnosticLocalId ? (
                 <View style={styles.feedbackCaixa}>
                   <FeedbackPanel
@@ -365,7 +369,12 @@ export default function ChatSessionScreen() {
           <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
             <Text style={[styles.messageText, isUser && styles.userText]}>{item.content}</Text>
             {!isUser && item.source && (
-              <Text style={styles.sourceBadge}>{item.source === 'CLOUD_LLM' ? '☁️' : '📱'}</Text>
+              <Ionicons
+                name={item.source === 'CLOUD_LLM' ? 'cloud-outline' : 'phone-portrait-outline'}
+                size={12}
+                color={theme.colors.textSecondary}
+                style={styles.sourceBadge}
+              />
             )}
           </View>
         </View>
@@ -388,7 +397,7 @@ export default function ChatSessionScreen() {
             accessibilityRole="button"
             accessibilityLabel="Voltar"
           >
-            <Text style={styles.backButton}>←</Text>
+            <Ionicons name="arrow-back" size={24} color={theme.colors.primary} style={styles.backButton} />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>
             {ehNova ? 'Nova conversa' : session?.title ?? 'Agrônomo Virtual'}
@@ -448,7 +457,7 @@ export default function ChatSessionScreen() {
           />
           {isBusy ? (
             <TouchableOpacity style={styles.sendButton} onPress={stopResponse} accessibilityRole="button" accessibilityLabel="Parar">
-              <Text style={styles.sendButtonText}>■</Text>
+              <Ionicons name="stop" size={18} color="#FFFFFF" />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
@@ -458,7 +467,7 @@ export default function ChatSessionScreen() {
               accessibilityRole="button"
               accessibilityLabel="Enviar"
             >
-              <Text style={styles.sendButtonText}>➤</Text>
+              <Ionicons name="send" size={18} color="#FFFFFF" />
             </TouchableOpacity>
           )}
         </View>
@@ -478,7 +487,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
-  backButton: { color: theme.colors.primary, fontSize: 24, marginRight: 12 },
+  backButton: { marginRight: 12 },
   headerTitle: {
     flex: 1,
     color: theme.colors.text,
@@ -520,7 +529,7 @@ const styles = StyleSheet.create({
   },
   messageText: { color: theme.colors.text, fontSize: theme.typography.fontSize.md, lineHeight: 22 },
   userText: { color: '#FFFFFF' },
-  sourceBadge: { fontSize: 10, marginTop: 4, opacity: 0.5 },
+  sourceBadge: { marginTop: 4 },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -549,7 +558,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sendButtonDisabled: { opacity: 0.4 },
-  sendButtonText: { color: '#FFFFFF', fontSize: 18 },
   retryText: { color: theme.colors.primary, fontWeight: '600', marginTop: 6 },
   partialNote: { fontSize: 11, color: theme.colors.textSecondary, marginTop: 4, fontStyle: 'italic' },
   fotoSozinha: {
@@ -569,10 +577,15 @@ const styles = StyleSheet.create({
     marginTop: -theme.spacing.sm,
   },
   feedbackFeito: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    marginTop: 6,
+  },
+  feedbackFeitoTexto: {
     color: theme.colors.primary,
     fontSize: theme.typography.fontSize.xs,
     fontWeight: '600',
-    marginTop: 6,
   },
   avisoLegal: {
     color: theme.colors.textSecondary,

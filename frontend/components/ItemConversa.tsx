@@ -2,6 +2,7 @@
 // A linha de uma conversa. Vive aqui porque a lista (`/chat`) e o bloco de
 // resumo da Home mostram exatamente a mesma linha; duas cópias divergiriam.
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import type { SessionListItem } from '../lib/chatRepository';
 import { dataRelativa, previewDaSessao } from '../lib/sessionListFormat';
 import { theme } from '../config/theme';
@@ -27,7 +28,7 @@ export function ItemConversa({ item, onPress, onLongPress }: ItemConversaProps) 
     >
       <View style={styles.itemTexto}>
         <View style={styles.itemTopo}>
-          {item.originDiagnosticLocalId ? <Text style={styles.marcaFoto}>📷</Text> : null}
+          {item.originDiagnosticLocalId ? <Ionicons name="camera-outline" size={16} color={theme.colors.textSecondary} /> : null}
           <Text style={styles.itemTitulo} numberOfLines={1}>
             {item.title}
           </Text>
@@ -51,7 +52,6 @@ const styles = StyleSheet.create({
   },
   itemTexto: { flex: 1 },
   itemTopo: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
-  marcaFoto: { fontSize: theme.typography.fontSize.sm },
   itemTitulo: {
     flex: 1,
     color: theme.colors.text,
