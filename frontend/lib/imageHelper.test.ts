@@ -23,7 +23,7 @@ vi.mock('expo-file-system', () => {
   return { File, Paths: { document: { uri: 'file:///documentos' } } };
 });
 
-import { saveImagePersistently } from './imageHelper';
+import { saveImagePersistently, FotoNaoGuardadaError } from './imageHelper';
 
 const PAYLOAD = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 const PNG_URI = `data:image/png;base64,${PAYLOAD}`;
@@ -75,27 +75,27 @@ describe('saveImagePersistently', () => {
     expect(uri).toMatch(/^file:\/\/\/documentos\/diag_.*\.jpg$/);
   });
 
-  it('devolve o tempUri e registra a causa quando a escrita falha', async () => {
+  it('lança e registra a causa quando a escrita falha', async () => {
     const causa = new Error('disco cheio');
     mocks.write.mockImplementation(() => {
       throw causa;
     });
     const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const uri = await saveImagePersistently(PNG_URI);
+    await expect(saveImagePersistently(PNG_URI)).rejects.toBeInstanceOf(FotoNaoGuardadaError);
 
-    expect(uri).toBe(PNG_URI);
     expect(erro).toHaveBeenCalledWith(expect.stringContaining('[ImageHelper]'), causa);
   });
 
-  it('devolve o tempUri e registra a causa quando a cópia falha', async () => {
+  it('lança e registra a causa quando a cópia falha', async () => {
     const causa = new Error('sem permissão');
     mocks.copy.mockRejectedValue(causa);
     const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const uri = await saveImagePersistently('file:///cache/foto.jpg');
+    await expect(saveImagePersistently('file:///cache/foto.jpg')).rejects.toBeInstanceOf(
+      FotoNaoGuardadaError
+    );
 
-    expect(uri).toBe('file:///cache/foto.jpg');
     expect(erro).toHaveBeenCalledWith(expect.stringContaining('[ImageHelper]'), causa);
   });
 });
