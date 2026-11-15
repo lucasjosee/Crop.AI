@@ -1,5 +1,6 @@
 import { resolveDiseaseName } from './diagnosisDetails';
 import { dataRelativa } from './sessionListFormat';
+import { diagnosticoIncerto } from './confianca';
 import type { MapSession } from './chatRepository';
 import type { ConnectionMode } from '../config/network';
 
@@ -43,39 +44,57 @@ export const REGIAO_PADRAO: RegiaoMapa = {
   longitudeDelta: 30,
 };
 
-function lerDiseaseId(attachmentJson: string | null): string | null {
-  if (!attachmentJson) return null;
+function lerCv(attachmentJson: string | null): { diseaseId: string | null; confianca: number | null } {
+  if (!attachmentJson) return { diseaseId: null, confianca: null };
   try {
-    const anexo = JSON.parse(attachmentJson) as { cvResult?: { diseaseId?: unknown } };
+    const anexo = JSON.parse(attachmentJson) as {
+      cvResult?: { diseaseId?: unknown; confidence?: unknown };
+    };
     const id = anexo?.cvResult?.diseaseId;
-    return typeof id === 'string' ? id : null;
+    const confianca = anexo?.cvResult?.confidence;
+    return {
+      diseaseId: typeof id === 'string' ? id : null,
+      confianca: typeof confianca === 'number' ? confianca : null,
+    };
   } catch {
-    return null;
+    return { diseaseId: null, confianca: null };
   }
 }
 
-/** A regra de classificação, num lugar só. Interna: quem usa entra por `classificarPino`. */
-function classificarDiseaseId(diseaseId: string | null): TipoPino {
-  return diseaseId === ID_SAUDAVEL ? 'SAUDAVEL' : 'PROBLEMA';
+/**
+ * A regra de classificação, num lugar só. `Saudável` só é SAUDAVEL com
+ * confiança conhecida e suficiente (ou confirmada pelo servidor): na dúvida,
+ * sinalizar, nunca afirmar saúde. Confiança ilegível conta como incerta.
+ */
+function classificarCv(
+  diseaseId: string | null,
+  confianca: number | null,
+  status: string | null
+): TipoPino {
+  if (diseaseId !== ID_SAUDAVEL) return 'PROBLEMA';
+  if (confianca === null || diagnosticoIncerto(confianca, status)) return 'PROBLEMA';
+  return 'SAUDAVEL';
 }
 
 /**
- * Puro. Classifica pelo `cvResult.diseaseId` do anexo da foto.
- * Anexo ausente ou JSON inválido caem em `PROBLEMA` — na dúvida, sinalizar.
+ * Puro. Classifica pelo `cvResult` do anexo da foto e pelo status da segunda
+ * opinião. Anexo ausente ou JSON inválido caem em `PROBLEMA` — na dúvida,
+ * sinalizar.
  */
-export function classificarPino(attachmentJson: string | null): TipoPino {
-  return classificarDiseaseId(lerDiseaseId(attachmentJson));
+export function classificarPino(attachmentJson: string | null, status: string | null = null): TipoPino {
+  const { diseaseId, confianca } = lerCv(attachmentJson);
+  return classificarCv(diseaseId, confianca, status);
 }
 
 export async function montarPinos(linhas: MapSession[], agora?: Date): Promise<PinoMapa[]> {
   const pinos: PinoMapa[] = [];
   for (const linha of linhas) {
-    const diseaseId = lerDiseaseId(linha.attachmentJson);
+    const { diseaseId, confianca } = lerCv(linha.attachmentJson);
     pinos.push({
       sessionId: linha.sessionId,
       latitude: linha.latitude,
       longitude: linha.longitude,
-      tipo: classificarDiseaseId(diseaseId),
+      tipo: classificarCv(diseaseId, confianca, linha.crossValidationStatus),
       doencaNome: diseaseId ? await resolveDiseaseName(diseaseId) : NOME_DESCONHECIDO,
       dataRelativa: dataRelativa(linha.createdAt, agora),
       imageUri: linha.imageUri,
@@ -100,7 +119,7 @@ export interface ResumoMapa {
 export function resumoDoMapa(linhas: MapSession[]): ResumoMapa {
   let saudaveis = 0;
   for (const linha of linhas) {
-    if (classificarPino(linha.attachmentJson) === 'SAUDAVEL') saudaveis += 1;
+    if (classificarPino(linha.attachmentJson, linha.crossValidationStatus) === 'SAUDAVEL') saudaveis += 1;
   }
   return { total: linhas.length, problemas: linhas.length - saudaveis, saudaveis };
 }

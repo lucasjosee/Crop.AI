@@ -29,7 +29,7 @@ function linha(over: Partial<MapSession> = {}): MapSession {
     confiancaIa: 0.9,
     crossValidationStatus: null,
     imageUri: 'file:///f.jpg',
-    attachmentJson: '{"cvResult":{"diseaseId":"Saudável"}}',
+    attachmentJson: '{"cvResult":{"diseaseId":"Saudável","confidence":0.9}}',
     ...over,
   };
 }
@@ -123,7 +123,18 @@ describe('regiaoInicial', () => {
 
 describe('classificarPino', () => {
   it('Saudável é o único SAUDAVEL', () => {
-    expect(classificarPino('{"cvResult":{"diseaseId":"Saudável"}}')).toBe('SAUDAVEL');
+    expect(classificarPino('{"cvResult":{"diseaseId":"Saudável","confidence":0.9}}')).toBe('SAUDAVEL');
+  });
+
+  it('Saudável com confiança baixa é PROBLEMA, salvo confirmação do servidor', () => {
+    const anexo = '{"cvResult":{"diseaseId":"Saudável","confidence":0.16}}';
+    expect(classificarPino(anexo)).toBe('PROBLEMA');
+    expect(classificarPino(anexo, 'SKIPPED')).toBe('PROBLEMA');
+    expect(classificarPino(anexo, 'CONFIRMED')).toBe('SAUDAVEL');
+  });
+
+  it('Saudável sem confiança legível é PROBLEMA: na dúvida, sinalizar', () => {
+    expect(classificarPino('{"cvResult":{"diseaseId":"Saudável"}}')).toBe('PROBLEMA');
   });
 
   it('Fitotoxicidade é PROBLEMA, porque é dano químico e não planta sadia', () => {
@@ -148,7 +159,7 @@ describe('classificarPino', () => {
 describe('resumoDoMapa', () => {
   it('conta total, problemas e saudáveis', () => {
     const linhas = [
-      linha({ sessionId: 'a', attachmentJson: '{"cvResult":{"diseaseId":"Saudável"}}' }),
+      linha({ sessionId: 'a', attachmentJson: '{"cvResult":{"diseaseId":"Saudável","confidence":0.9}}' }),
       linha({ sessionId: 'b', attachmentJson: '{"cvResult":{"diseaseId":"Fitotoxicidade"}}' }),
       linha({ sessionId: 'c', attachmentJson: '{"cvResult":{"diseaseId":"Ferrugem"}}' }),
       linha({ sessionId: 'd', attachmentJson: null }),
