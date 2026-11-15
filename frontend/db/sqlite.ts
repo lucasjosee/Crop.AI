@@ -550,6 +550,23 @@ export async function runMigrationsAndSeed(driver: IDatabaseDriver) {
     await driver.execute('PRAGMA user_version = 9;');
     console.log('[Database] Migration to version 9 complete.');
   }
+
+  if (version < 10) {
+    console.log('[Database] Migrating to version 10: doença desativada fica inativa...');
+
+    // O servidor desativa doenças; o aparelho não pode apagá-las, porque
+    // fila_diagnosticos, fila_feedbacks e chat_* as referenciam por FK. Quem
+    // instala do zero também passa por aqui (a v1 cria `doencas` sem a coluna),
+    // e quem migra da v9 recebe 1 em todas as linhas, que estavam ativas.
+    try {
+      await driver.execute('ALTER TABLE doencas ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;');
+    } catch {
+      console.warn('[Database] is_active column might already exist.');
+    }
+
+    await driver.execute('PRAGMA user_version = 10;');
+    console.log('[Database] Migration to version 10 complete.');
+  }
 }
 
 // -------------------------------------------------------------
