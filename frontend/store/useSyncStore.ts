@@ -11,6 +11,8 @@ interface SyncState {
   lastSyncAt: string | null;
   lastError: string | null;
   refreshCounts: () => Promise<void>;
+  /** Logout: as pendências eram da conta que saiu. */
+  zerarContagens: () => void;
   syncNow: (opts?: { manual?: boolean }) => Promise<void>;
 }
 
@@ -21,6 +23,9 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   isSyncing: false,
   lastSyncAt: null,
   lastError: null,
+
+  zerarContagens: () =>
+    set({ pendingDiagnostics: 0, pendingFeedbacks: 0, pendingConversations: 0, lastError: null }),
 
   refreshCounts: async () => {
     try {

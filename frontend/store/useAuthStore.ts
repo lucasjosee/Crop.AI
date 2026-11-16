@@ -64,6 +64,22 @@ function decodeJwt(token: string): JwtPayload | null {
   }
 }
 
+/**
+ * Dado sem dono (de antes da v11) fica com a primeira conta que entra. Roda
+ * antes de `isAuthenticated` virar true: as telas e o auto-sync só começam
+ * depois. Falha é registrada e não impede a entrada — o produtor não pode
+ * ficar fora do app por causa disso. Import dinâmico: lib/chatRepository chega
+ * aqui por lib/usuarioAtual, e um import estático fecharia o ciclo.
+ */
+async function reivindicarDados(userId: string): Promise<void> {
+  try {
+    const { reivindicarDadosSemDono } = await import('../lib/chatRepository');
+    await reivindicarDadosSemDono(userId);
+  } catch (error) {
+    console.warn('[AuthStore] Falha ao reivindicar os dados sem dono.', error);
+  }
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   accessToken: null,
@@ -82,6 +98,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const decoded = decodeJwt(accessToken);
         if (decoded && decoded.exp * 1000 > Date.now()) {
           // Token de acesso ainda é válido
+          await reivindicarDados(decoded.sub);
           set({
             user: {
               id: decoded.sub,
@@ -99,6 +116,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           // guardado e renova em segundo plano pelo mutex (ADR 0006). Sem
           // rede o produtor não espera nem é mandado ao login; só a recusa do
           // servidor desloga, e isso o refreshAccessToken já faz por dentro.
+          await reivindicarDados(decoded.sub);
           set({
             user: {
               id: decoded.sub,
@@ -193,6 +211,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await secureStorage.setItem('user_email', email);
       await secureStorage.setItem('user_nome', userProfile.nome);
 
+      await reivindicarDados(userProfile.id);
       set({
         user: userProfile,
         accessToken: access_token,
@@ -249,6 +268,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isAuthenticated: false,
         isLoading: false,
       });
+
+      // O estado em memória era da conta que saiu. Os dados no banco ficam: são
+      // dela, e voltam quando ela entrar de novo. Import dinâmico pelo mesmo
+      // motivo do ciclo com lib/api e useSyncStore -> syncService.
+      try {
+        const { useChatStore } = await import('./useChatStore');
+        const { useSyncStore } = await import('./useSyncStore');
+        useChatStore.getState().limparSessao();
+        useSyncStore.getState().zerarContagens();
+      } catch (error) {
+        console.warn('[AuthStore] Falha ao limpar o estado em memória no logout.', error);
+      }
     }
   },
 
@@ -261,6 +292,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     await secureStorage.setItem('access_token', accessToken);
     await secureStorage.setItem('refresh_token', refreshToken);
+
+    // Primeira vez autenticado por aqui (boot com access ilegível): reivindica
+    // antes de liberar as telas. A renovação de uma sessão já aberta não repete.
+    if (!get().isAuthenticated) await reivindicarDados(decoded.sub);
 
     set({
       accessToken,

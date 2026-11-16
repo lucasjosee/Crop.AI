@@ -326,6 +326,19 @@ export async function ensureSession(
   return { id: session.id, criada: true };
 }
 
+/**
+ * Dado sem dono (de antes da v11) passa para a conta que acabou de entrar.
+ *
+ * Só toca `user_id IS NULL`: linha que já tem dono nunca muda, e rodar de novo
+ * não faz nada. Cobre as duas raízes, `chat_sessions` e `fila_diagnosticos`
+ * (feedbacks e mensagens herdam o dono por elas). Mora aqui porque é o único
+ * módulo autorizado a escrever em `chat_sessions`.
+ */
+export async function reivindicarDadosSemDono(userId: string): Promise<void> {
+  await dbDriver.execute('UPDATE fila_diagnosticos SET user_id = ? WHERE user_id IS NULL;', [userId]);
+  await dbDriver.execute('UPDATE chat_sessions SET user_id = ? WHERE user_id IS NULL;', [userId]);
+}
+
 export async function listMapSessions(): Promise<MapSession[]> {
   const userId = idDoUsuarioAtual();
   const res = await dbDriver.execute(
