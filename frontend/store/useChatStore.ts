@@ -52,6 +52,8 @@ interface ChatState {
   registrarDesfecho: (sessionId: string, desfecho: DesfechoResposta) => void;
   limparDesfecho: (sessionId: string) => void;
   setModelLoadProgress: (progress: number | null) => void;
+  /** Logout: zera conversa ativa, streaming e desfechos. O modelo (do aparelho) fica. */
+  limparSessao: () => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -83,4 +85,12 @@ export const useChatStore = create<ChatState>((set) => ({
       return { desfechos: resto };
     }),
   setModelLoadProgress: (progress) => set({ modelLoadProgress: progress }),
+  limparSessao: () =>
+    set({
+      activeSessionId: null,
+      isStreaming: false,
+      streamingContent: '',
+      pendingResponses: {},
+      desfechos: {},
+    }),
 }));

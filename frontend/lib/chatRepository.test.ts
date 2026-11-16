@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../db/sqlite', () => ({ dbDriver: { execute: mocks.execute } }));
 vi.mock('expo-crypto', () => ({ randomUUID: mocks.uuid }));
+vi.mock('./usuarioAtual', () => ({ idDoUsuarioAtual: () => 'u1', idDoUsuarioAtualOuNulo: () => 'u1' }));
 
 import {
   appendMessage,
@@ -228,7 +229,7 @@ describe('chatRepository', () => {
 
     const [sql, params] = mocks.execute.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('LIMIT ?');
-    expect(params).toEqual([3]);
+    expect(params).toEqual(['u1', 3]);
     expect(lista).toEqual([
       {
         id: 's1',
@@ -242,14 +243,14 @@ describe('chatRepository', () => {
     ]);
   });
 
-  it('listSessions sem argumento não aplica LIMIT e não passa parâmetros', async () => {
+  it('listSessions sem argumento não aplica LIMIT e só passa o dono', async () => {
     await listSessions();
 
     const [sql, params] = mocks.execute.mock.calls[0] as [string, unknown[] | undefined];
     // Não `not.toContain('LIMIT')`: a consulta já tem dois `LIMIT 1` nas
     // subconsultas da última mensagem. O que não pode existir é o LIMIT externo.
     expect(sql).not.toContain('LIMIT ?');
-    expect(params).toBeUndefined();
+    expect(params).toEqual(['u1']);
   });
 
   it('renameSession faz trim, bump em updated_at e marca PENDING', async () => {

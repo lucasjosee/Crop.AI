@@ -155,8 +155,8 @@ describe('migração v8 — fila de conversas assume o sync', () => {
     expect(sql().some((s) => s.includes('PRAGMA user_version = 8'))).toBe(true);
   });
 
-  it('não roda a v10 num banco que já está na 10', async () => {
-    const { driver, sql } = recordingDriver(10);
+  it('não roda a v11 num banco que já está na 11', async () => {
+    const { driver, sql } = recordingDriver(11);
 
     await runMigrationsAndSeed(driver as never);
 
@@ -217,11 +217,33 @@ describe('migração v10 — doença desativada fica inativa', () => {
 
     await runMigrationsAndSeed(driver as never);
 
-    // Num banco já na v9 só a v10 roda: nada além da sondagem e dos dois comandos.
+    // Num banco já na v9 rodam a v10 e a v11: nada além da sondagem e dos comandos delas.
     expect(sql()).toEqual([
       'PRAGMA user_version;',
       'ALTER TABLE doencas ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;',
       'PRAGMA user_version = 10;',
+      'ALTER TABLE fila_diagnosticos ADD COLUMN user_id TEXT;',
+      'ALTER TABLE chat_sessions ADD COLUMN user_id TEXT;',
+      'CREATE INDEX IF NOT EXISTS idx_fila_diagnosticos_user ON fila_diagnosticos(user_id);',
+      'CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id);',
+      'PRAGMA user_version = 11;',
+    ]);
+  });
+});
+
+describe('migração v11 — diagnósticos e conversas ganham dono', () => {
+  it('acrescenta user_id às duas raízes, com um índice em cada, e grava a versão 11', async () => {
+    const { driver, sql } = recordingDriver(10);
+
+    await runMigrationsAndSeed(driver as never);
+
+    expect(sql()).toEqual([
+      'PRAGMA user_version;',
+      'ALTER TABLE fila_diagnosticos ADD COLUMN user_id TEXT;',
+      'ALTER TABLE chat_sessions ADD COLUMN user_id TEXT;',
+      'CREATE INDEX IF NOT EXISTS idx_fila_diagnosticos_user ON fila_diagnosticos(user_id);',
+      'CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id);',
+      'PRAGMA user_version = 11;',
     ]);
   });
 });

@@ -21,6 +21,7 @@ vi.mock('./conversationSyncService', () => ({ syncPendingConversations: vi.fn() 
 vi.mock('./pendingSecondOpinionService', () => ({ sweepPendingSecondOpinions: vi.fn() }));
 vi.mock('./diagnosticImageUploadService', () => ({ ensureDiagnosticImageUploaded: vi.fn() }));
 vi.mock('../store/useNetworkStore', () => ({ useNetworkStore: { getState: () => ({}) } }));
+vi.mock('./usuarioAtual', () => ({ idDoUsuarioAtualOuNulo: () => 'A' }));
 vi.mock('../store/useAuthStore', () => ({ useAuthStore: { getState: () => ({}) } }));
 
 import { criarBancoMigrado } from '../db/sqliteReal.testutil';
@@ -33,8 +34,8 @@ describe('syncPendingFeedbacks em SQLite real', () => {
     const doenca = (await db.execute('SELECT id FROM doencas LIMIT 1;')).rows._array[0].id;
     for (const [id, server] of [['a', 'srv-a'], ['b', null], ['c', 'srv-c']]) {
       await db.execute(
-        `INSERT INTO fila_diagnosticos (local_id, server_id, image_uri, doenca_id, modelo_usado)
-         VALUES (?, ?, 'file:///x.jpg', ?, 'm');`,
+        `INSERT INTO fila_diagnosticos (local_id, server_id, image_uri, doenca_id, modelo_usado, user_id)
+         VALUES (?, ?, 'file:///x.jpg', ?, 'm', 'A');`,
         [id, server, doenca]
       );
     }
@@ -45,7 +46,7 @@ describe('syncPendingFeedbacks em SQLite real', () => {
       data: { processed_count: 2, failed_count: 0, processed_items: [{ diagnostic_local_id: 'a' }, { diagnostic_local_id: 'b' }], failed_items: [] },
     } as any);
 
-    await syncPendingFeedbacks();
+    await syncPendingFeedbacks('A');
 
     const corpo = vi.mocked(api.post).mock.calls[0][1] as any;
     expect(corpo.feedbacks.map((f: any) => [f.diagnostic_local_id, f.diagnostic_server_id])).toEqual([

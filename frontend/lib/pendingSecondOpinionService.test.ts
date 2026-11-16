@@ -62,7 +62,7 @@ describe('pendingSecondOpinionService', () => {
   });
 
   it('o seletor exclui especiais, códigos permanentes e quem estourou o teto', async () => {
-    await sweepPendingSecondOpinions();
+    await sweepPendingSecondOpinions('u1');
 
     const sql = mocks.selects[0];
     expect(sql).toContain("cross_validation_status = 'SKIPPED'");
@@ -79,7 +79,7 @@ describe('pendingSecondOpinionService', () => {
   });
 
   it('sem candidatos não chama a rede', async () => {
-    const resultado = await sweepPendingSecondOpinions();
+    const resultado = await sweepPendingSecondOpinions('u1');
 
     expect(resultado).toEqual({ synced: 0, failed: 0 });
     expect(mocks.crossValidate).not.toHaveBeenCalled();
@@ -88,7 +88,7 @@ describe('pendingSecondOpinionService', () => {
   it('pede a segunda opinião de cada candidato com os dados da própria linha', async () => {
     mocks.candidatos.push(candidato(), candidato({ local_id: 'd2' }));
 
-    const resultado = await sweepPendingSecondOpinions();
+    const resultado = await sweepPendingSecondOpinions('u1');
 
     expect(resultado).toEqual({ synced: 2, failed: 0 });
     expect(mocks.crossValidate).toHaveBeenCalledTimes(2);
@@ -114,7 +114,7 @@ describe('pendingSecondOpinionService', () => {
       Object.assign(new Error('IMAGE_NOT_FOUND'), { code: 'IMAGE_NOT_FOUND' })
     );
 
-    const resultado = await sweepPendingSecondOpinions();
+    const resultado = await sweepPendingSecondOpinions('u1');
 
     expect(resultado).toEqual({ synced: 0, failed: 1 });
     expect(mocks.updates).toHaveLength(1);
@@ -126,7 +126,7 @@ describe('pendingSecondOpinionService', () => {
     mocks.candidatos.push(candidato());
     mocks.crossValidate.mockRejectedValue(new Error('rede caiu'));
 
-    await sweepPendingSecondOpinions();
+    await sweepPendingSecondOpinions('u1');
 
     expect(mocks.updates[0].params[0]).toBe('LLM_UNAVAILABLE');
   });
@@ -137,7 +137,7 @@ describe('pendingSecondOpinionService', () => {
       .mockRejectedValueOnce(new Error('rede caiu'))
       .mockResolvedValueOnce({ imageS3Key: 'k', result: {} } as never);
 
-    const resultado = await sweepPendingSecondOpinions();
+    const resultado = await sweepPendingSecondOpinions('u1');
 
     expect(resultado).toEqual({ synced: 1, failed: 1 });
     expect(mocks.crossValidate).toHaveBeenCalledTimes(2);

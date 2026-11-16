@@ -43,6 +43,7 @@ const mocks = vi.hoisted(() => {
     execute,
     network: { connectionMode: 'ONLINE' },
     auth: { isAuthenticated: true },
+    usuario: 'u1' as string | null,
   };
 });
 
@@ -56,6 +57,7 @@ vi.mock('./api', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('./catalogSyncService', () => ({ syncCatalog: vi.fn(async () => ({ updated: false })) }));
 vi.mock('../store/useNetworkStore', () => ({ useNetworkStore: { getState: () => mocks.network } }));
 vi.mock('../store/useAuthStore', () => ({ useAuthStore: { getState: () => mocks.auth } }));
+vi.mock('./usuarioAtual', () => ({ idDoUsuarioAtualOuNulo: () => mocks.usuario }));
 vi.mock('./conversationSyncService', () => ({
   syncPendingConversations: vi.fn(async () => ({ synced: 2, failed: 0 })),
 }));
@@ -96,6 +98,7 @@ describe('syncService', () => {
     mocks.tables.fila_feedbacks.length = 0;
     mocks.network.connectionMode = 'ONLINE';
     mocks.auth.isAuthenticated = true;
+    mocks.usuario = 'u1';
 
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (String(url).includes('example.com')) {
@@ -120,7 +123,7 @@ describe('syncService', () => {
       } as any;
     });
 
-    const result = await syncPendingDiagnostics();
+    const result = await syncPendingDiagnostics('u1');
 
     expect(result.synced).toBe(1);
     expect(row.image_s3_key).toBe('diagnosticos/u/x.jpg');
@@ -144,7 +147,7 @@ describe('syncService', () => {
       } as any;
     });
 
-    await syncPendingDiagnostics();
+    await syncPendingDiagnostics('u1');
 
     const syncCall = vi.mocked(api.post).mock.calls.find((call) =>
       String(call[0]).includes('/sync/diagnostics')
@@ -167,7 +170,7 @@ describe('syncService', () => {
       return { ok: false, status: 500 } as any; // PUT no S3 falha
     }));
 
-    const result = await syncPendingDiagnostics();
+    const result = await syncPendingDiagnostics('u1');
 
     expect(result.synced).toBe(0);
     expect(row.sync_status).toBe('PENDING');
@@ -185,7 +188,7 @@ describe('syncService', () => {
       },
     } as any);
 
-    await syncPendingDiagnostics();
+    await syncPendingDiagnostics('u1');
 
     expect(row.sync_status).toBe('FAILED');
     expect(row.retry_count).toBe(MAX_RETRIES);
@@ -197,10 +200,10 @@ describe('syncService', () => {
       data: { status: 'success', synced_count: 1, failed_count: 0, synced_items: [{ local_id: 'lf', server_id: 'srv-f' }], failed_items: [] },
     } as any);
 
-    const auto = await syncPendingDiagnostics(false);
+    const auto = await syncPendingDiagnostics('u1', false);
     expect(auto.synced).toBe(0);
 
-    const manual = await syncPendingDiagnostics(true);
+    const manual = await syncPendingDiagnostics('u1', true);
     expect(manual.synced).toBe(1);
   });
 
@@ -217,7 +220,7 @@ describe('syncService', () => {
       } as any;
     });
 
-    const result = await syncPendingDiagnostics();
+    const result = await syncPendingDiagnostics('u1');
 
     const tamanhos = vi.mocked(api.post).mock.calls.map((c) => (c[1] as any).diagnostics.length);
     expect(tamanhos).toEqual([50, 50, 20]);
@@ -237,7 +240,7 @@ describe('syncService', () => {
       }) as any)
       .mockRejectedValueOnce(new Error('500'));
 
-    await expect(syncPendingDiagnostics()).rejects.toThrow('500');
+    await expect(syncPendingDiagnostics('u1')).rejects.toThrow('500');
 
     const status = (r: any) => r.sync_status;
     expect(mocks.tables.fila_diagnosticos.slice(0, 50).map(status)).toEqual(Array(50).fill('SYNCED'));
@@ -269,7 +272,7 @@ describe('syncService', () => {
       return { ok: !String(url).endsWith('/2'), status: 200 } as any; // o segundo PUT falha
     }));
 
-    await syncPendingDiagnostics();
+    await syncPendingDiagnostics('u1');
 
     expect(ordem).toEqual(['upload', 'upload', 'sync']);
     expect(ok.sync_status).toBe('SYNCED');
@@ -293,12 +296,23 @@ describe('syncService', () => {
       }) as any)
       .mockRejectedValueOnce(new Error('500'));
 
-    await expect(syncPendingFeedbacks()).rejects.toThrow('500');
+    await expect(syncPendingFeedbacks('u1')).rejects.toThrow('500');
 
     const tamanhos = vi.mocked(api.post).mock.calls.map((c) => (c[1] as any).feedbacks.length);
     expect(tamanhos).toEqual([50, 10]);
     expect(mocks.tables.fila_feedbacks.slice(0, 50).every((r) => r.sync_status === 'SYNCED')).toBe(true);
     expect(mocks.tables.fila_feedbacks.slice(50).every((r) => r.sync_status === 'PENDING')).toBe(true);
+  });
+
+  it('runFullSync sem usuário não faz requisição nem varre etapa nenhuma', async () => {
+    mocks.usuario = null;
+    seedDiagnostic({ image_s3_key: 'diagnosticos/u/x.jpg' });
+
+    const resultado = await runFullSync();
+
+    expect(resultado.ran).toBe(false);
+    expect(api.post).not.toHaveBeenCalled();
+    expect(api.get).not.toHaveBeenCalled();
   });
 
   it('runFullSync roda conversas e segundas opiniões, e não fala mais de slm-logs', async () => {

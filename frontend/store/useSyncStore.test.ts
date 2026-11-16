@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => {
   const execute = vi.fn(async (sql: string) => {
     const s = sql.trim().toLowerCase();
     if (s.includes('from chat_sessions')) return wrap([{ n: tables.chat_sessions.length }]);
-    const m = s.match(/^select count\(\*\) as n from (\w+) where sync_status in \('pending', 'failed'\)/);
+    const m = s.match(/^select count\(\*\) as n from (\w+) where (?:user_id = \? and )?sync_status in \('pending', 'failed'\)/);
     if (m) {
       const n = tables[m[1]].filter((r) => ['PENDING', 'FAILED'].includes(r.sync_status)).length;
       return wrap([{ n }]);
@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => {
   return { tables, execute };
 });
 
+vi.mock('../lib/usuarioAtual', () => ({ idDoUsuarioAtualOuNulo: () => 'u1' }));
 vi.mock('../db/sqlite', () => ({ dbDriver: { execute: mocks.execute } }));
 vi.mock('../lib/syncService', () => ({
   runFullSync: vi.fn(async () => ({

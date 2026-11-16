@@ -3,6 +3,7 @@ import { dbDriver } from '../db/sqlite';
 import { syncCatalog } from './catalogSyncService';
 import { useNetworkStore } from '../store/useNetworkStore';
 import { useAuthStore } from '../store/useAuthStore';
+import { idDoUsuarioAtualOuNulo } from './usuarioAtual';
 import { ensureDiagnosticImageUploaded } from './diagnosticImageUploadService';
 import { MAX_RETRIES, MAX_ITENS_POR_LOTE, type StepResult } from './syncContracts';
 import { syncPendingConversations } from './conversationSyncService';
@@ -40,15 +41,25 @@ function toArray(res: any): QueueRow[] {
   return out;
 }
 
-async function getQueueRows(table: string, includeFailed: boolean): Promise<QueueRow[]> {
+/**
+ * Só as linhas do dono. O diagnóstico tem `user_id`; o feedback herda o dono
+ * do diagnóstico a que pertence.
+ */
+const FILTRO_DONO: Record<string, string> = {
+  fila_diagnosticos: 'user_id = ?',
+  fila_feedbacks: 'diagnostic_local_id IN (SELECT local_id FROM fila_diagnosticos WHERE user_id = ?)',
+};
+
+async function getQueueRows(table: string, userId: string, includeFailed: boolean): Promise<QueueRow[]> {
+  const dono = FILTRO_DONO[table];
   const pending = toArray(
-    await dbDriver.execute(`SELECT * FROM ${table} WHERE sync_status = ?;`, ['PENDING'])
+    await dbDriver.execute(`SELECT * FROM ${table} WHERE sync_status = ? AND ${dono};`, ['PENDING', userId])
   ).filter((r) => (r.retry_count ?? 0) < MAX_RETRIES);
 
   if (!includeFailed) return pending;
 
   const failed = toArray(
-    await dbDriver.execute(`SELECT * FROM ${table} WHERE sync_status = ?;`, ['FAILED'])
+    await dbDriver.execute(`SELECT * FROM ${table} WHERE sync_status = ? AND ${dono};`, ['FAILED', userId])
   ).map((r) => ({ ...r, retry_count: 0 }));
 
   return [...pending, ...failed];
@@ -156,8 +167,8 @@ async function syncFatiaDiagnosticos(rows: QueueRow[]): Promise<StepResult> {
   return { synced: data.synced_count ?? 0, failed: data.failed_count ?? 0 };
 }
 
-export async function syncPendingDiagnostics(includeFailed = false): Promise<StepResult> {
-  const rows = await getQueueRows('fila_diagnosticos', includeFailed);
+export async function syncPendingDiagnostics(userId: string, includeFailed = false): Promise<StepResult> {
+  const rows = await getQueueRows('fila_diagnosticos', userId, includeFailed);
   const total: StepResult = { synced: 0, failed: 0 };
 
   // Uma requisição por fatia, em sequência. Uma fatia concluída fica
@@ -199,8 +210,8 @@ async function syncFatiaFeedbacks(rows: QueueRow[]): Promise<StepResult> {
   return { synced: data.processed_count ?? 0, failed: data.failed_count ?? 0 };
 }
 
-export async function syncPendingFeedbacks(includeFailed = false): Promise<StepResult> {
-  const rows = await getQueueRows('fila_feedbacks', includeFailed);
+export async function syncPendingFeedbacks(userId: string, includeFailed = false): Promise<StepResult> {
+  const rows = await getQueueRows('fila_feedbacks', userId, includeFailed);
   const total: StepResult = { synced: 0, failed: 0 };
   for (const fatia of emFatias(rows, MAX_ITENS_POR_LOTE)) {
     const r = await syncFatiaFeedbacks(fatia);
@@ -218,6 +229,10 @@ export async function runFullSync(opts: { includeFailed?: boolean } = {}): Promi
   const mode = useNetworkStore.getState().connectionMode;
   if (mode !== 'ONLINE' && mode !== 'DEGRADED') return EMPTY_RESULT;
   if (!useAuthStore.getState().isAuthenticated) return EMPTY_RESULT;
+  // O dono é capturado uma vez, no início: uma rodada que começa com A não passa
+  // a varrer os dados de B se a conta mudar no meio. Sem usuário, não roda.
+  const userId = idDoUsuarioAtualOuNulo();
+  if (!userId) return EMPTY_RESULT;
 
   syncInProgress = true;
   console.log('[Sync] Iniciando sincronização completa...');
@@ -237,12 +252,12 @@ export async function runFullSync(opts: { includeFailed?: boolean } = {}): Promi
     };
     const zero: StepResult = { synced: 0, failed: 0 };
 
-    const diagnostics = await etapa('diagnostics', zero, () => syncPendingDiagnostics(includeFailed));
-    const feedbacks = await etapa('feedbacks', zero, () => syncPendingFeedbacks(includeFailed));
+    const diagnostics = await etapa('diagnostics', zero, () => syncPendingDiagnostics(userId, includeFailed));
+    const feedbacks = await etapa('feedbacks', zero, () => syncPendingFeedbacks(userId, includeFailed));
     // Conversas depois dos diagnósticos: o servidor resolve o vínculo
     // `diagnostico_id` na hora quando o diagnóstico já chegou.
-    const conversations = await etapa('conversations', zero, () => syncPendingConversations(includeFailed));
-    const secondOpinions = await etapa('secondOpinions', zero, () => sweepPendingSecondOpinions());
+    const conversations = await etapa('conversations', zero, () => syncPendingConversations(userId, includeFailed));
+    const secondOpinions = await etapa('secondOpinions', zero, () => sweepPendingSecondOpinions(userId));
     const catalog = await etapa('catalog', { updated: false }, () => syncCatalog());
     console.log('[Sync] Sincronização concluída.', {
       diagnostics, feedbacks, conversations, secondOpinions, falhas,

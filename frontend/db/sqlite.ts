@@ -567,6 +567,31 @@ export async function runMigrationsAndSeed(driver: IDatabaseDriver) {
     await driver.execute('PRAGMA user_version = 10;');
     console.log('[Database] Migration to version 10 complete.');
   }
+
+  if (version < 11) {
+    console.log('[Database] Migrating to version 11: diagnósticos e conversas ganham dono...');
+
+    // `user_id` fica só nas duas raízes: fila_feedbacks pertence a um
+    // diagnóstico e chat_messages a uma sessão, e herdam o dono por elas. As
+    // linhas que já existem ficam com NULL ("sem dono") e a próxima conta que
+    // entrar as reivindica (reivindicarDadosSemDono). Instalação nova também
+    // passa por aqui, depois da v1 e da v7 que criam as tabelas.
+    for (const sql of [
+      'ALTER TABLE fila_diagnosticos ADD COLUMN user_id TEXT;',
+      'ALTER TABLE chat_sessions ADD COLUMN user_id TEXT;',
+    ]) {
+      try {
+        await driver.execute(sql);
+      } catch {
+        console.warn('[Database] user_id column might already exist.');
+      }
+    }
+    await driver.execute('CREATE INDEX IF NOT EXISTS idx_fila_diagnosticos_user ON fila_diagnosticos(user_id);');
+    await driver.execute('CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id);');
+
+    await driver.execute('PRAGMA user_version = 11;');
+    console.log('[Database] Migration to version 11 complete.');
+  }
 }
 
 // -------------------------------------------------------------

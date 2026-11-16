@@ -1,5 +1,6 @@
 import { randomUUID } from 'expo-crypto';
 import { dbDriver } from '../db/sqlite';
+import { idDoUsuarioAtual, idDoUsuarioAtualOuNulo } from './usuarioAtual';
 import type { InferenceResult } from './inference';
 
 export type MessageSource = 'LOCAL_SLM' | 'CLOUD_LLM';
@@ -92,6 +93,8 @@ export async function createSession(input: {
   title: string;
   originDiagnosticLocalId?: string | null;
 }): Promise<ChatSession> {
+  // Antes de qualquer escrita: sem usuário não nasce conversa sem dono.
+  const userId = idDoUsuarioAtual();
   const now = new Date().toISOString();
   const session: ChatSession = {
     id: randomUUID(),
@@ -103,9 +106,9 @@ export async function createSession(input: {
   };
   await dbDriver.execute(
     `INSERT INTO chat_sessions
-       (id, title, origin_diagnostic_local_id, created_at, updated_at, deleted_at, sync_status, retry_count)
-     VALUES (?, ?, ?, ?, ?, NULL, 'PENDING', 0);`,
-    [session.id, session.title, session.originDiagnosticLocalId, now, now]
+       (id, title, origin_diagnostic_local_id, created_at, updated_at, deleted_at, sync_status, retry_count, user_id)
+     VALUES (?, ?, ?, ?, ?, NULL, 'PENDING', 0, ?);`,
+    [session.id, session.title, session.originDiagnosticLocalId, now, now, userId]
   );
   return session;
 }
@@ -257,6 +260,10 @@ export interface SessionListItem {
  * tudo, porque a FlatList virtualiza e a linha é leve.
  */
 export async function listSessions(limite?: number): Promise<SessionListItem[]> {
+  // Leitura sem usuário (a tela ainda montada durante a saída) é lista vazia,
+  // não erro: só a escrita exige dono.
+  const userId = idDoUsuarioAtualOuNulo();
+  if (!userId) return [];
   const base = `SELECT s.id, s.title, s.updated_at, s.origin_diagnostic_local_id,
             (SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.id) AS message_count,
             (SELECT m.content FROM chat_messages m WHERE m.session_id = s.id
@@ -264,13 +271,13 @@ export async function listSessions(limite?: number): Promise<SessionListItem[]> 
             (SELECT m.role FROM chat_messages m WHERE m.session_id = s.id
               ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_message_role
        FROM chat_sessions s
-      WHERE s.deleted_at IS NULL
+      WHERE s.deleted_at IS NULL AND s.user_id = ?
       ORDER BY s.updated_at DESC`;
 
   const res =
     limite === undefined
-      ? await dbDriver.execute(`${base};`)
-      : await dbDriver.execute(`${base} LIMIT ?;`, [limite]);
+      ? await dbDriver.execute(`${base};`, [userId])
+      : await dbDriver.execute(`${base} LIMIT ?;`, [userId, limite]);
 
   return (res.rows._array as Array<Record<string, any>>).map((row) => ({
     id: row.id,
@@ -322,7 +329,22 @@ export async function ensureSession(
   return { id: session.id, criada: true };
 }
 
+/**
+ * Dado sem dono (de antes da v11) passa para a conta que acabou de entrar.
+ *
+ * Só toca `user_id IS NULL`: linha que já tem dono nunca muda, e rodar de novo
+ * não faz nada. Cobre as duas raízes, `chat_sessions` e `fila_diagnosticos`
+ * (feedbacks e mensagens herdam o dono por elas). Mora aqui porque é o único
+ * módulo autorizado a escrever em `chat_sessions`.
+ */
+export async function reivindicarDadosSemDono(userId: string): Promise<void> {
+  await dbDriver.execute('UPDATE fila_diagnosticos SET user_id = ? WHERE user_id IS NULL;', [userId]);
+  await dbDriver.execute('UPDATE chat_sessions SET user_id = ? WHERE user_id IS NULL;', [userId]);
+}
+
 export async function listMapSessions(): Promise<MapSession[]> {
+  const userId = idDoUsuarioAtualOuNulo();
+  if (!userId) return [];
   const res = await dbDriver.execute(
     `SELECT s.id, s.title, s.created_at,
             d.latitude, d.longitude, d.doenca_id, d.confianca_ia,
@@ -332,7 +354,8 @@ export async function listMapSessions(): Promise<MapSession[]> {
               ORDER BY m.created_at ASC, m.id ASC LIMIT 1) AS attachment_json
        FROM chat_sessions s
        JOIN fila_diagnosticos d ON d.local_id = s.origin_diagnostic_local_id
-      WHERE s.deleted_at IS NULL AND d.latitude IS NOT NULL;`
+      WHERE s.deleted_at IS NULL AND s.user_id = ? AND d.latitude IS NOT NULL;`,
+    [userId]
   );
   return res.rows._array.map((row: Record<string, any>) => ({
     sessionId: row.id,
