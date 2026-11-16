@@ -1,6 +1,6 @@
 import { randomUUID } from 'expo-crypto';
 import { dbDriver } from '../db/sqlite';
-import { idDoUsuarioAtual } from './usuarioAtual';
+import { idDoUsuarioAtual, idDoUsuarioAtualOuNulo } from './usuarioAtual';
 import type { InferenceResult } from './inference';
 
 export type MessageSource = 'LOCAL_SLM' | 'CLOUD_LLM';
@@ -260,7 +260,10 @@ export interface SessionListItem {
  * tudo, porque a FlatList virtualiza e a linha é leve.
  */
 export async function listSessions(limite?: number): Promise<SessionListItem[]> {
-  const userId = idDoUsuarioAtual();
+  // Leitura sem usuário (a tela ainda montada durante a saída) é lista vazia,
+  // não erro: só a escrita exige dono.
+  const userId = idDoUsuarioAtualOuNulo();
+  if (!userId) return [];
   const base = `SELECT s.id, s.title, s.updated_at, s.origin_diagnostic_local_id,
             (SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.id) AS message_count,
             (SELECT m.content FROM chat_messages m WHERE m.session_id = s.id
@@ -340,7 +343,8 @@ export async function reivindicarDadosSemDono(userId: string): Promise<void> {
 }
 
 export async function listMapSessions(): Promise<MapSession[]> {
-  const userId = idDoUsuarioAtual();
+  const userId = idDoUsuarioAtualOuNulo();
+  if (!userId) return [];
   const res = await dbDriver.execute(
     `SELECT s.id, s.title, s.created_at,
             d.latitude, d.longitude, d.doenca_id, d.confianca_ia,
