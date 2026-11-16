@@ -14,6 +14,11 @@ const envSchema = z.object({
   LLM_API_KEY: z.string().min(1),
   // For claude: set LLM_MODEL_ID=claude-3-5-sonnet-20241022 in .env
   LLM_MODEL_ID: z.string().default('gemini-2.5-flash'),
+  // Raciocínio do Gemini na conversa. 0 = desligado: o app desiste do motor
+  // online sem o primeiro token em 10 s, e o raciocínio custava ~5 s.
+  LLM_CHAT_THINKING_BUDGET: z.coerce.number().int().min(0).default(0),
+  // Teto de conversas por usuário em janela corrida de 24 h.
+  LLM_CHAT_DAILY_LIMIT: z.coerce.number().int().min(1).default(200),
   // S3 / MinIO (dev usa MinIO local; produção AWS S3 = trocar endpoint/keys)
   S3_ENDPOINT: z.string().optional(),
   S3_REGION: z.string().default('us-east-1'),

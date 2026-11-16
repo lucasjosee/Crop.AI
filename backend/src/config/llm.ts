@@ -11,6 +11,10 @@ DIRETRIZES OBRIGATÓRIAS:
 DISCLAIMER LEGAL OBRIGATÓRIO (incluir sempre que recomendar defensivo):
 "Recomendação informativa. A aplicação de defensivo exige receituário e validação de engenheiro agrônomo (Lei 14.785/2023)."`;
 
+// Acrescentada ao prompt de sistema quando a foto do diagnóstico vai junto.
+export const FOTO_ANEXADA_PROMPT =
+  'A foto da folha está anexada à mensagem do usuário. Avalie a imagem por conta própria e, se discordar do modelo de visão local, diga isso claramente ao produtor.';
+
 export const LLM_MAX_TOKENS = 2048;
 export const LLM_TEMPERATURE = 0.4;
 

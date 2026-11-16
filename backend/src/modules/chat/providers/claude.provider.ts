@@ -1,6 +1,6 @@
 // backend/src/modules/chat/providers/claude.provider.ts
 import Anthropic from '@anthropic-ai/sdk';
-import type { LLMProvider, LLMMessage, StreamCallbacks, LLMImageInput } from './llm.provider';
+import type { LLMProvider, LLMMessage, StreamCallbacks, StreamOptions, LLMImageInput } from './llm.provider';
 import { LLM_MAX_TOKENS, LLM_TEMPERATURE } from '../../../config/llm';
 
 export class ClaudeProvider implements LLMProvider {
@@ -17,25 +17,45 @@ export class ClaudeProvider implements LLMProvider {
     systemPrompt: string,
     history: LLMMessage[],
     userMessage: string,
-    callbacks: StreamCallbacks
+    callbacks: StreamCallbacks,
+    opcoes: StreamOptions = {}
   ): Promise<void> {
     const messages: Anthropic.Messages.MessageParam[] = [
       ...history.map((msg) => ({
         role: msg.role as 'user' | 'assistant',
         content: msg.content,
       })),
-      { role: 'user', content: userMessage },
+      {
+        role: 'user',
+        content: opcoes.imagem
+          ? [
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: opcoes.imagem.mimeType,
+                  data: opcoes.imagem.dataBase64,
+                },
+              },
+              { type: 'text', text: userMessage },
+            ]
+          : userMessage,
+      },
     ];
 
-    const stream = await this.client.messages.create({
-      model: this.modelId,
-      max_tokens: LLM_MAX_TOKENS,
-      temperature: LLM_TEMPERATURE,
-      system: systemPrompt,
-      messages,
-      stream: true,
-    });
+    const stream = await this.client.messages.create(
+      {
+        model: this.modelId,
+        max_tokens: LLM_MAX_TOKENS,
+        temperature: LLM_TEMPERATURE,
+        system: systemPrompt,
+        messages,
+        stream: true,
+      },
+      { signal: opcoes.signal }
+    );
 
+    let inputTokens = 0;
     let outputTokens = 0;
 
     for await (const event of stream) {
@@ -45,12 +65,15 @@ export class ClaudeProvider implements LLMProvider {
       ) {
         await callbacks.onChunk(event.delta.text);
       }
+      if (event.type === 'message_start') {
+        inputTokens = event.message.usage.input_tokens;
+      }
       if (event.type === 'message_delta') {
         outputTokens = event.usage?.output_tokens ?? 0;
       }
     }
 
-    callbacks.onDone(outputTokens);
+    callbacks.onDone({ tokensEntrada: inputTokens, tokensSaida: outputTokens });
   }
 
   async analyzeImage(

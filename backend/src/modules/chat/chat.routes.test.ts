@@ -49,6 +49,23 @@ describe('POST /api/v1/chat/stream (integration)', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('recusa com 400, antes de abrir o stream, a foto de outro usuário', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/chat/stream',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      payload: {
+        session_id: '00000000-0000-4000-8000-000000000099',
+        message: 'Olá',
+        history: [],
+        image_s3_key: 'diagnosticos/00000000-0000-4000-8000-0000000000aa/foto.jpg',
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.headers['content-type']).toMatch(/application\/json/);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
   it('rejeita com 400 o contrato antigo (campo context)', async () => {
     const res = await app.inject({
       method: 'POST',

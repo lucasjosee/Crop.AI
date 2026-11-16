@@ -46,6 +46,7 @@ const ERROR_MESSAGES: Record<EngineError, string> = {
   TIMEOUT: 'O Agrônomo IA demorou demais. Toque em tentar de novo.',
   LLM_UNAVAILABLE: 'O Agrônomo IA está indisponível. Toque em tentar de novo.',
   RATE_LIMITED: 'Muitas perguntas seguidas. Aguarde um instante.',
+  QUOTA_EXCEEDED: 'Você atingiu o limite diário de perguntas ao assistente online. Tente de novo amanhã.',
   TOKEN_EXPIRED: 'Sua sessão expirou. Entre novamente.',
   ABORTED: '',
   UNKNOWN: 'Não foi possível gerar a resposta. Toque em tentar de novo.',

@@ -2,7 +2,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { ChatService } from './chat.service';
 import { chatStreamInputSchema } from './chat.schema';
-import { AppError } from '../../shared/errors';
+import { AppError, ValidationError } from '../../shared/errors';
 import { resolveAllowedOrigin } from '../../config/cors';
 
 const chatService = new ChatService();
@@ -11,6 +11,14 @@ export const chatController = {
   stream: async (request: FastifyRequest, reply: FastifyReply) => {
     const parsed = chatStreamInputSchema.parse(request.body);
     const user = request.user as { sub: string; role: string };
+
+    // Fronteira de posse da foto, antes de a resposta virar stream: assim o
+    // erro sai como 400 normal. É a mesma regra da segunda opinião.
+    if (parsed.image_s3_key && !parsed.image_s3_key.startsWith(`diagnosticos/${user.sub}/`)) {
+      throw new ValidationError('A imagem não pertence ao usuário autenticado.');
+    }
+
+    await chatService.verificarCota(user.sub);
 
     // Hijack the response to write SSE manually
     reply.hijack();
@@ -39,8 +47,14 @@ export const chatController = {
     // terminou. O close do IncomingMessage (request.raw) não serve: no Node >= 16
     // ele sai quando o corpo termina de ser lido, com o cliente conectado, e
     // descartava a resposta inteira sem nem fechar o stream.
+    // O provedor continuaria gerando (e cobrando) sem alguém ouvindo, então a
+    // desconexão também cancela a geração.
+    const cancelamento = new AbortController();
     reply.raw.on('close', () => {
-      if (!reply.raw.writableFinished) aborted = true;
+      if (!reply.raw.writableFinished) {
+        aborted = true;
+        cancelamento.abort();
+      }
     });
 
     let tokensUsed = 0;
@@ -48,13 +62,15 @@ export const chatController = {
     try {
       await chatService.stream(parsed, user, {
         onChunk: async (text: string) => {
-          if (aborted) return;
+          // writableEnded: depois do teto de tempo a resposta já foi encerrada,
+          // e um provedor que ignore o cancelamento ainda pode entregar um pedaço.
+          if (aborted || reply.raw.writableEnded) return;
           reply.raw.write(`data: ${JSON.stringify({ chunk: text })}\n\n`);
         },
-        onDone: (tokens: number) => {
-          tokensUsed = tokens;
+        onDone: (uso) => {
+          tokensUsed = uso.tokensEntrada + uso.tokensSaida;
         },
-      });
+      }, { log: request.log, signal: cancelamento.signal });
 
       if (!aborted) {
         reply.raw.end(

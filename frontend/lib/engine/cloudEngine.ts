@@ -65,9 +65,28 @@ export function montarCorpoChat(input: EngineInput, imageS3Key?: string) {
   };
 }
 
-function mapHttpStatus(status: number | undefined): EngineError {
+/**
+ * Num erro HTTP, o `react-native-sse` entrega o corpo da resposta inteiro,
+ * como texto, em `event.message` (é o `xhr.responseText`). O envelope do
+ * servidor é `{ error: { code, message } }`. Texto que não é esse JSON (corpo
+ * parcial, página de proxy) devolve `undefined`.
+ */
+export function codigoDoCorpoDeErro(message: unknown): string | undefined {
+  if (typeof message !== 'string') return undefined;
+  try {
+    const code = (JSON.parse(message) as { error?: { code?: unknown } })?.error?.code;
+    return typeof code === 'string' ? code : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** 429 com DAILY_QUOTA_EXCEEDED é a cota do dia; sem o código, é excesso momentâneo. */
+export function mapHttpStatus(status: number | undefined, message?: unknown): EngineError {
   if (status === 401) return 'TOKEN_EXPIRED';
-  if (status === 429) return 'RATE_LIMITED';
+  if (status === 429) {
+    return codigoDoCorpoDeErro(message) === 'DAILY_QUOTA_EXCEEDED' ? 'QUOTA_EXCEEDED' : 'RATE_LIMITED';
+  }
   if (status === 502 || status === 503 || status === 504) return 'LLM_UNAVAILABLE';
   return 'UNKNOWN';
 }
@@ -181,7 +200,7 @@ export class CloudEngine implements ConversationEngine {
 
       es.addEventListener('error', (event: unknown) => {
         if (settled) return;
-        const status = (event as { xhrStatus?: number })?.xhrStatus;
+        const { xhrStatus: status, message } = (event ?? {}) as { xhrStatus?: number; message?: unknown };
         if (status === 401 && !refreshed) {
           refreshed = true;
           settled = true;
@@ -204,7 +223,7 @@ export class CloudEngine implements ConversationEngine {
             });
           return;
         }
-        fail(mapHttpStatus(status));
+        fail(mapHttpStatus(status, message));
       });
     };
 

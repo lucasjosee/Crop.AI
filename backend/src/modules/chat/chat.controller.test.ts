@@ -5,10 +5,11 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 
 // O controller instancia o ChatService na carga do módulo, então o mock
 // delega a um vi.fn hoisted que cada teste reconfigura.
-const mocks = vi.hoisted(() => ({ stream: vi.fn() }));
+const mocks = vi.hoisted(() => ({ stream: vi.fn(), verificarCota: vi.fn() }));
 vi.mock('./chat.service', () => ({
   ChatService: class {
     stream = mocks.stream;
+    verificarCota = mocks.verificarCota;
   },
 }));
 
@@ -39,18 +40,19 @@ const tick = () => new Promise((r) => setImmediate(r));
 describe('chatController.stream', () => {
   beforeEach(() => {
     mocks.stream.mockReset();
+    mocks.verificarCota.mockReset();
   });
 
   it('termina com done quando o close do request sai depois de o corpo ser lido', async () => {
     const { request, reply, requestRaw, replyRaw } = montar();
-    mocks.stream.mockImplementation(async (_i: unknown, _u: unknown, cb: { onChunk: (t: string) => Promise<void>; onDone: (n: number) => void }) => {
+    mocks.stream.mockImplementation(async (_i: unknown, _u: unknown, cb: { onChunk: (t: string) => Promise<void>; onDone: (u: { tokensEntrada: number; tokensSaida: number }) => void }) => {
       // No Node >= 16 o IncomingMessage emite close ao fim da leitura do corpo,
       // com o cliente ainda conectado.
       requestRaw.emit('close');
       await cb.onChunk('a');
       await tick();
       await cb.onChunk('b');
-      cb.onDone(7);
+      cb.onDone({ tokensEntrada: 3, tokensSaida: 4 });
     });
 
     await chatController.stream(request, reply);
@@ -62,15 +64,29 @@ describe('chatController.stream', () => {
 
   it('para de escrever quando o cliente fecha a resposta antes do fim', async () => {
     const { request, reply, replyRaw } = montar();
-    mocks.stream.mockImplementation(async (_i: unknown, _u: unknown, cb: { onChunk: (t: string) => Promise<void>; onDone: (n: number) => void }) => {
+    mocks.stream.mockImplementation(async (_i: unknown, _u: unknown, cb: { onChunk: (t: string) => Promise<void>; onDone: (u: { tokensEntrada: number; tokensSaida: number }) => void }) => {
       replyRaw.emit('close'); // writableFinished segue false: o cliente caiu
       await cb.onChunk('a');
-      cb.onDone(3);
+      cb.onDone({ tokensEntrada: 1, tokensSaida: 2 });
     });
 
     await chatController.stream(request, reply);
 
     expect(replyRaw.write).not.toHaveBeenCalled();
     expect(replyRaw.end).not.toHaveBeenCalled();
+  });
+
+  it('aborta o sinal entregue ao serviço quando o cliente fecha a resposta', async () => {
+    const { request, reply, replyRaw } = montar();
+    let sinal: AbortSignal | undefined;
+    mocks.stream.mockImplementation(async (_i: unknown, _u: unknown, _cb: unknown, ctx: { signal: AbortSignal }) => {
+      sinal = ctx.signal;
+      expect(sinal.aborted).toBe(false);
+      replyRaw.emit('close');
+    });
+
+    await chatController.stream(request, reply);
+
+    expect(sinal?.aborted).toBe(true);
   });
 });

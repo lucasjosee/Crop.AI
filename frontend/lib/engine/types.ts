@@ -27,6 +27,7 @@ export type EngineError =
   | 'TIMEOUT'
   | 'LLM_UNAVAILABLE'
   | 'RATE_LIMITED'
+  | 'QUOTA_EXCEEDED'
   | 'TOKEN_EXPIRED'
   | 'ABORTED'
   | 'UNKNOWN';
