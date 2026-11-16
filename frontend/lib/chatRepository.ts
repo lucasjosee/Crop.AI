@@ -1,5 +1,6 @@
 import { randomUUID } from 'expo-crypto';
 import { dbDriver } from '../db/sqlite';
+import { idDoUsuarioAtual } from './usuarioAtual';
 import type { InferenceResult } from './inference';
 
 export type MessageSource = 'LOCAL_SLM' | 'CLOUD_LLM';
@@ -92,6 +93,8 @@ export async function createSession(input: {
   title: string;
   originDiagnosticLocalId?: string | null;
 }): Promise<ChatSession> {
+  // Antes de qualquer escrita: sem usuário não nasce conversa sem dono.
+  const userId = idDoUsuarioAtual();
   const now = new Date().toISOString();
   const session: ChatSession = {
     id: randomUUID(),
@@ -103,9 +106,9 @@ export async function createSession(input: {
   };
   await dbDriver.execute(
     `INSERT INTO chat_sessions
-       (id, title, origin_diagnostic_local_id, created_at, updated_at, deleted_at, sync_status, retry_count)
-     VALUES (?, ?, ?, ?, ?, NULL, 'PENDING', 0);`,
-    [session.id, session.title, session.originDiagnosticLocalId, now, now]
+       (id, title, origin_diagnostic_local_id, created_at, updated_at, deleted_at, sync_status, retry_count, user_id)
+     VALUES (?, ?, ?, ?, ?, NULL, 'PENDING', 0, ?);`,
+    [session.id, session.title, session.originDiagnosticLocalId, now, now, userId]
   );
   return session;
 }

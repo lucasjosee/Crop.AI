@@ -63,6 +63,7 @@ const mocks = vi.hoisted(() => {
   return { sessions, messages, execute, upload: vi.fn(async () => 'diagnosticos/u1/foto.jpg') };
 });
 
+vi.mock('./usuarioAtual', () => ({ idDoUsuarioAtual: () => 'u1' }));
 vi.mock('../db/sqlite', () => ({ dbDriver: { execute: mocks.execute } }));
 vi.mock('./api', () => ({ api: { post: vi.fn() } }));
 vi.mock('./diagnosticImageUploadService', () => ({

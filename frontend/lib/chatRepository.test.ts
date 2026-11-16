@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../db/sqlite', () => ({ dbDriver: { execute: mocks.execute } }));
 vi.mock('expo-crypto', () => ({ randomUUID: mocks.uuid }));
+vi.mock('./usuarioAtual', () => ({ idDoUsuarioAtual: () => 'u1' }));
 
 import {
   appendMessage,

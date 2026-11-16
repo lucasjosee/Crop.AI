@@ -1,5 +1,6 @@
 import { randomUUID } from 'expo-crypto';
 import { dbDriver } from '../db/sqlite';
+import { idDoUsuarioAtual } from './usuarioAtual';
 import { saveImagePersistently } from './imageHelper';
 import { appendMessage, createSession, type ChatAttachment, type ChatSession } from './chatRepository';
 import { tituloDaAnalise } from './confianca';
@@ -33,6 +34,8 @@ export interface StartedDiagnosisSession {
 export async function startDiagnosisSession(
   input: StartDiagnosisSessionInput
 ): Promise<StartedDiagnosisSession> {
+  // Primeiro: sem usuário não há dono, e a foto nem chega a ser copiada.
+  const userId = idDoUsuarioAtual();
   const imageUri = await saveImagePersistently(input.imageUri);
   const diagnosticLocalId = randomUUID();
   const isEspecial = ESPECIAIS.has(input.inference.diseaseId);
@@ -48,8 +51,8 @@ export async function startDiagnosisSession(
     `INSERT INTO fila_diagnosticos (
       local_id, server_id, image_uri, image_s3_key, latitude, longitude,
       doenca_id, confianca_ia, modelo_usado, tempo_inferencia_ms,
-      sync_status, retry_count, cross_validation_status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      sync_status, retry_count, cross_validation_status, user_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     [
       diagnosticLocalId,
       null,
@@ -64,6 +67,7 @@ export async function startDiagnosisSession(
       'PENDING',
       0,
       crossValidationStatus,
+      userId,
     ]
   );
 
