@@ -29,7 +29,8 @@ const SQL_CANDIDATOS = `
   SELECT local_id, image_uri, image_s3_key, doenca_id,
          confianca_ia, modelo_usado, tempo_inferencia_ms
     FROM fila_diagnosticos
-   WHERE cross_validation_status = 'SKIPPED'
+   WHERE user_id = ?
+     AND cross_validation_status = 'SKIPPED'
      AND doenca_id IS NOT NULL
      AND (cross_validation_error_code IS NULL
           OR cross_validation_error_code IN (?, ?))
@@ -45,8 +46,9 @@ const SQL_CANDIDATOS = `
  * conversa. E não devolve o diagnóstico para PENDING — quem persistiu o
  * veredito no servidor foi o próprio `/diagnosis/cross-validate`.
  */
-export async function sweepPendingSecondOpinions(): Promise<StepResult> {
+export async function sweepPendingSecondOpinions(userId: string): Promise<StepResult> {
   const res = await dbDriver.execute(SQL_CANDIDATOS, [
+    userId,
     CODIGOS_TRANSITORIOS[0],
     CODIGOS_TRANSITORIOS[1],
     MAX_TENTATIVAS_SEGUNDA_OPINIAO,

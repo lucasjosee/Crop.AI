@@ -58,23 +58,25 @@ function toArray(res: any): Row[] {
  */
 const SQL_SESSOES_AUTOMATICO = `
   SELECT * FROM chat_sessions
-   WHERE sync_status = 'PENDING'
-      OR (sync_status = 'SYNCED'
-          AND EXISTS (SELECT 1 FROM chat_messages m
-                       WHERE m.session_id = chat_sessions.id AND m.sync_status = 'PENDING'))
+   WHERE user_id = ?
+     AND (sync_status = 'PENDING'
+          OR (sync_status = 'SYNCED'
+              AND EXISTS (SELECT 1 FROM chat_messages m
+                           WHERE m.session_id = chat_sessions.id AND m.sync_status = 'PENDING')))
    ORDER BY created_at ASC;
 `;
 
 const SQL_SESSOES_MANUAL = `
   SELECT * FROM chat_sessions
-   WHERE sync_status IN ('PENDING', 'FAILED')
-      OR EXISTS (SELECT 1 FROM chat_messages m
-                  WHERE m.session_id = chat_sessions.id AND m.sync_status = 'PENDING')
+   WHERE user_id = ?
+     AND (sync_status IN ('PENDING', 'FAILED')
+          OR EXISTS (SELECT 1 FROM chat_messages m
+                      WHERE m.session_id = chat_sessions.id AND m.sync_status = 'PENDING'))
    ORDER BY created_at ASC;
 `;
 
-async function sessoesParaSincronizar(includeFailed: boolean): Promise<Row[]> {
-  const res = await dbDriver.execute(includeFailed ? SQL_SESSOES_MANUAL : SQL_SESSOES_AUTOMATICO);
+async function sessoesParaSincronizar(userId: string, includeFailed: boolean): Promise<Row[]> {
+  const res = await dbDriver.execute(includeFailed ? SQL_SESSOES_MANUAL : SQL_SESSOES_AUTOMATICO, [userId]);
   return toArray(res)
     .map((r) => (r.sync_status === 'FAILED' ? { ...r, retry_count: 0 } : r))
     .filter((r) => (r.retry_count ?? 0) < MAX_RETRIES);
@@ -197,8 +199,8 @@ async function marcarRetentativa(sessao: Row): Promise<void> {
   ]);
 }
 
-export async function syncPendingConversations(includeFailed = false): Promise<StepResult> {
-  const sessoes = await sessoesParaSincronizar(includeFailed);
+export async function syncPendingConversations(userId: string, includeFailed = false): Promise<StepResult> {
+  const sessoes = await sessoesParaSincronizar(userId, includeFailed);
   if (sessoes.length === 0) return { synced: 0, failed: 0 };
 
   const prontas = new Map<string, { sessao: Row; totalEnvelopes: number }>();

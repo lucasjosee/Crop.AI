@@ -15,6 +15,7 @@ vi.mock('../db/sqlite', async (importOriginal) => {
   const real = await importOriginal<typeof import('../db/sqlite')>();
   return { ...real, dbDriver: { execute: (sql: string, p?: any[]) => mocks.banco!.execute(sql, p) } };
 });
+vi.mock('../lib/usuarioAtual', () => ({ idDoUsuarioAtualOuNulo: () => 'A' }));
 vi.mock('../lib/syncService', () => ({ runFullSync: vi.fn() }));
 
 import { criarBancoMigrado } from '../db/sqliteReal.testutil';
@@ -26,8 +27,8 @@ describe('useSyncStore.refreshCounts em SQLite real', () => {
     const doenca = (await db.execute('SELECT id FROM doencas LIMIT 1;')).rows._array[0].id;
     for (const [id, status] of [['a', 'PENDING'], ['b', 'FAILED'], ['c', 'SYNCED'], ['d', 'SYNCING']]) {
       await db.execute(
-        `INSERT INTO fila_diagnosticos (local_id, image_uri, doenca_id, modelo_usado, sync_status)
-         VALUES (?, 'file:///x.jpg', ?, 'm', ?);`,
+        `INSERT INTO fila_diagnosticos (local_id, image_uri, doenca_id, modelo_usado, sync_status, user_id)
+         VALUES (?, 'file:///x.jpg', ?, 'm', ?, 'A');`,
         [id, doenca, status]
       );
     }
@@ -37,7 +38,7 @@ describe('useSyncStore.refreshCounts em SQLite real', () => {
     // s1: sessão SYNCED com mensagem PENDING (conta); s2: tudo SYNCED (não conta); s3: sessão PENDING (conta)
     for (const [id, status] of [['s1', 'SYNCED'], ['s2', 'SYNCED'], ['s3', 'PENDING']]) {
       await db.execute(
-        "INSERT INTO chat_sessions (id, title, created_at, updated_at, sync_status) VALUES (?, 't', 'x', 'x', ?);",
+        "INSERT INTO chat_sessions (id, title, created_at, updated_at, sync_status, user_id) VALUES (?, 't', 'x', 'x', ?, 'A');",
         [id, status]
       );
     }

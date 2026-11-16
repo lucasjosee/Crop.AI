@@ -129,7 +129,7 @@ describe('conversationSyncService', () => {
     mocks.messages.push(mensagem(), mensagem({ id: 'm2', role: 'assistant', source: 'LOCAL_SLM' }));
     vi.mocked(api.post).mockResolvedValue(respostaOk(['s1']) as never);
 
-    const resultado = await syncPendingConversations();
+    const resultado = await syncPendingConversations('u1');
 
     expect(resultado).toEqual({ synced: 1, failed: 0 });
     const [url, body] = vi.mocked(api.post).mock.calls[0] as [string, any];
@@ -150,7 +150,7 @@ describe('conversationSyncService', () => {
     );
     vi.mocked(api.post).mockResolvedValue(respostaOk(['s1']) as never);
 
-    await syncPendingConversations();
+    await syncPendingConversations('u1');
 
     const [, body] = vi.mocked(api.post).mock.calls[0] as [string, any];
     expect(body.conversations[0].messages).toHaveLength(1);
@@ -170,7 +170,7 @@ describe('conversationSyncService', () => {
     );
     vi.mocked(api.post).mockResolvedValue(respostaOk(['s1']) as never);
 
-    await syncPendingConversations();
+    await syncPendingConversations('u1');
 
     expect(mocks.upload).toHaveBeenCalledWith(
       expect.objectContaining({ localId: 'd1', imageUri: 'file:///local/foto.jpg' })
@@ -195,7 +195,7 @@ describe('conversationSyncService', () => {
     );
     mocks.upload.mockRejectedValue(new Error('S3 fora do ar'));
 
-    const resultado = await syncPendingConversations();
+    const resultado = await syncPendingConversations('u1');
 
     expect(api.post).not.toHaveBeenCalled();
     expect(resultado).toEqual({ synced: 0, failed: 0 });
@@ -216,7 +216,7 @@ describe('conversationSyncService', () => {
       },
     } as never);
 
-    const resultado = await syncPendingConversations();
+    const resultado = await syncPendingConversations('u1');
 
     expect(resultado).toEqual({ synced: 0, failed: 1 });
     expect(mocks.sessions[0].sync_status).toBe('FAILED');
@@ -229,10 +229,10 @@ describe('conversationSyncService', () => {
     mocks.messages.push(mensagem());
     vi.mocked(api.post).mockResolvedValue(respostaOk(['s1']) as never);
 
-    expect(await syncPendingConversations()).toEqual({ synced: 0, failed: 0 });
+    expect(await syncPendingConversations('u1')).toEqual({ synced: 0, failed: 0 });
     expect(api.post).not.toHaveBeenCalled();
 
-    expect(await syncPendingConversations(true)).toEqual({ synced: 1, failed: 0 });
+    expect(await syncPendingConversations('u1', true)).toEqual({ synced: 1, failed: 0 });
     expect(api.post).toHaveBeenCalledTimes(1);
   });
 
@@ -240,7 +240,7 @@ describe('conversationSyncService', () => {
     mocks.sessions.push(sessao({ deleted_at: '2026-09-13T11:00:00.000Z' }));
     vi.mocked(api.post).mockResolvedValue(respostaOk(['s1']) as never);
 
-    await syncPendingConversations();
+    await syncPendingConversations('u1');
 
     const [, body] = vi.mocked(api.post).mock.calls[0] as [string, any];
     expect(body.conversations[0].messages).toEqual([]);
@@ -256,7 +256,7 @@ describe('conversationSyncService', () => {
       respostaOk(body.conversations.map((c: any) => c.session_id)) as never
     );
 
-    const resultado = await syncPendingConversations();
+    const resultado = await syncPendingConversations('u1');
 
     expect(api.post).toHaveBeenCalledTimes(2);
     const primeiro = (vi.mocked(api.post).mock.calls[0][1] as any).conversations;
@@ -273,7 +273,7 @@ describe('conversationSyncService', () => {
     mocks.messages.push(mensagem());
     vi.mocked(api.post).mockResolvedValue(respostaOk(['s1']) as never);
 
-    await syncPendingConversations();
+    await syncPendingConversations('u1');
 
     const [, body] = vi.mocked(api.post).mock.calls[0] as [string, any];
     expect(body.conversations[0].title).toBe('Conversa');
@@ -310,7 +310,7 @@ describe('conversationSyncService', () => {
       return respostaOk(ids) as never;
     });
 
-    const resultado = await syncPendingConversations();
+    const resultado = await syncPendingConversations('u1');
 
     expect(api.post).toHaveBeenCalledTimes(2);
     const primeiraChamada = vi.mocked(api.post).mock.calls[0][1] as any;
@@ -347,7 +347,7 @@ describe('conversationSyncService', () => {
 
     const normaliza = (sql: unknown) => String(sql).trim().replace(/\s+/g, ' ');
 
-    await syncPendingConversations(false);
+    await syncPendingConversations('u1', false);
     const sqlAutomatico = mocks.execute.mock.calls
       .map(([sql]) => normaliza(sql))
       .find((sql: string) => sql.includes('FROM chat_sessions'));
@@ -355,7 +355,7 @@ describe('conversationSyncService', () => {
     expect(sqlAutomatico).not.toContain("IN ('PENDING', 'FAILED')");
 
     mocks.execute.mockClear();
-    await syncPendingConversations(true);
+    await syncPendingConversations('u1', true);
     const sqlManual = mocks.execute.mock.calls
       .map(([sql]) => normaliza(sql))
       .find((sql: string) => sql.includes('FROM chat_sessions'));

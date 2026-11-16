@@ -260,6 +260,7 @@ export interface SessionListItem {
  * tudo, porque a FlatList virtualiza e a linha é leve.
  */
 export async function listSessions(limite?: number): Promise<SessionListItem[]> {
+  const userId = idDoUsuarioAtual();
   const base = `SELECT s.id, s.title, s.updated_at, s.origin_diagnostic_local_id,
             (SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.id) AS message_count,
             (SELECT m.content FROM chat_messages m WHERE m.session_id = s.id
@@ -267,13 +268,13 @@ export async function listSessions(limite?: number): Promise<SessionListItem[]> 
             (SELECT m.role FROM chat_messages m WHERE m.session_id = s.id
               ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_message_role
        FROM chat_sessions s
-      WHERE s.deleted_at IS NULL
+      WHERE s.deleted_at IS NULL AND s.user_id = ?
       ORDER BY s.updated_at DESC`;
 
   const res =
     limite === undefined
-      ? await dbDriver.execute(`${base};`)
-      : await dbDriver.execute(`${base} LIMIT ?;`, [limite]);
+      ? await dbDriver.execute(`${base};`, [userId])
+      : await dbDriver.execute(`${base} LIMIT ?;`, [userId, limite]);
 
   return (res.rows._array as Array<Record<string, any>>).map((row) => ({
     id: row.id,
@@ -326,6 +327,7 @@ export async function ensureSession(
 }
 
 export async function listMapSessions(): Promise<MapSession[]> {
+  const userId = idDoUsuarioAtual();
   const res = await dbDriver.execute(
     `SELECT s.id, s.title, s.created_at,
             d.latitude, d.longitude, d.doenca_id, d.confianca_ia,
@@ -335,7 +337,8 @@ export async function listMapSessions(): Promise<MapSession[]> {
               ORDER BY m.created_at ASC, m.id ASC LIMIT 1) AS attachment_json
        FROM chat_sessions s
        JOIN fila_diagnosticos d ON d.local_id = s.origin_diagnostic_local_id
-      WHERE s.deleted_at IS NULL AND d.latitude IS NOT NULL;`
+      WHERE s.deleted_at IS NULL AND s.user_id = ? AND d.latitude IS NOT NULL;`,
+    [userId]
   );
   return res.rows._array.map((row: Record<string, any>) => ({
     sessionId: row.id,
